@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from yt_tools._metadata import MetadataError, fetch_video_metadata
-from yt_tools.core import cache_dir_for, extract_video_id
+from yt_tools.core import cache_dir_for, extract_video_id, force_utf8_streams
 from yt_tools.markdown import Snippet, snippets_to_markdown
 
 
@@ -33,11 +33,7 @@ def run(
     video_id = extract_video_id(url)
 
     if out is None:
-        out_dir = cache_dir_for(url)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out = out_dir / "transcript.md"
-    else:
-        out.parent.mkdir(parents=True, exist_ok=True)
+        out = cache_dir_for(url) / "transcript.md"
 
     try:
         meta = fetch_video_metadata(url)
@@ -49,6 +45,7 @@ def run(
     meta["lang"] = lang
 
     md = snippets_to_markdown(snippets, meta)
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md, encoding="utf-8")
 
     if distill:
@@ -61,6 +58,7 @@ def run(
 
 
 def main(argv: list[str] | None = None) -> int:
+    force_utf8_streams()
     parser = argparse.ArgumentParser(
         prog="yt-transcript",
         description="Fetch YouTube transcript as clean markdown with [mm:ss] anchors.",

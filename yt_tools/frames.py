@@ -26,6 +26,7 @@ from yt_tools._metadata import MetadataError, fetch_video_metadata
 from yt_tools.core import (
     cache_dir_for,
     extract_video_id,
+    force_utf8_streams,
     format_seconds_for_filename,
     parse_timestamp_to_seconds,
 )
@@ -233,6 +234,7 @@ def run(
 
 
 def main(argv: list[str] | None = None) -> int:
+    force_utf8_streams()
     parser = argparse.ArgumentParser(
         prog="yt-frames",
         description="Extract frames from a YouTube video at given timestamps / intervals / scene boundaries.",

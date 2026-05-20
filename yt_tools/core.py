@@ -1,10 +1,22 @@
-"""Pure helpers — video-id extraction, timestamp conversions, cache path layout."""
+"""Helpers — video-id extraction, timestamp conversions, cache path layout, CLI stream config."""
 
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+
+def force_utf8_streams() -> None:
+    """Force stdout/stderr to UTF-8 so non-ASCII (yt-dlp warnings, transcript text) renders
+    on Windows consoles (cp1251 default) without mojibake. No-op where reconfigure isn't
+    available (wrapped streams in pytest's capsys, redirected file streams, etc.)."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
 
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _PATH_PATTERNS = ("/shorts/", "/embed/", "/v/", "/live/")

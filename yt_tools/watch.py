@@ -15,6 +15,7 @@ from yt_tools._metadata import MetadataError, fetch_video_metadata
 from yt_tools.core import (
     cache_dir_for,
     extract_video_id,
+    force_utf8_streams,
     format_seconds_for_filename,
     format_seconds_to_mmss,
 )
@@ -101,9 +102,7 @@ def run(
     video_id = extract_video_id(url)
     if out_dir is None:
         out_dir = cache_dir_for(url)
-    out_dir.mkdir(parents=True, exist_ok=True)
     frames_dir = out_dir / "frames"
-    frames_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         meta = fetch_video_metadata(url)
@@ -136,6 +135,7 @@ def run(
 
 
 def main(argv: list[str] | None = None) -> int:
+    force_utf8_streams()
     parser = argparse.ArgumentParser(
         prog="yt-watch",
         description="Combined transcript + scene-frames in one markdown (sidecar embed).",
