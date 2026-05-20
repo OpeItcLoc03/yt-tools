@@ -59,6 +59,15 @@ External binaries required on PATH (not pip-installed):
 - **yt-dlp** — `winget install yt-dlp.yt-dlp` / `brew install yt-dlp` / `pip install -U yt-dlp`
 - **ffmpeg** — `winget install Gyan.FFmpeg` / `brew install ffmpeg` / `apt install ffmpeg`
 
+> **Windows note.** `winget install` writes to the per-user PATH, which the
+> *current* shell session does not re-read — including the git-bash subshell
+> inside a Claude Code session. After installing yt-dlp or ffmpeg via winget,
+> **restart the terminal** (and the Claude Code session if running). Verify
+> with `where.exe ffmpeg` / `where.exe yt-dlp` in the new shell. If a restart
+> is impractical, look up the install path via `winget show <package>` (Gyan
+> typically nests under `%LOCALAPPDATA%\Microsoft\WinGet\Packages\...`) and
+> append it to `$env:Path` for the current session only.
+
 Verify entry-points (after `pip install -e .`):
 
 ```powershell
@@ -121,9 +130,10 @@ cd ~/projects/.common/lib/yt-tools
 python -m pytest tests/
 ```
 
-67 tests cover the pure logic (video-id extraction, mm:ss conversions,
-snippets → markdown rendering, cache list/prune, interleaved `yt-watch`
-rendering) and CLI smoke (yt-transcript, yt-frames timestamps/interval modes,
+74 tests cover the pure logic (video-id extraction, mm:ss conversions,
+snippets → markdown rendering with hybrid gap/duration/sentence segmentation,
+cache list/prune, interleaved `yt-watch` rendering, subprocess failure
+formatting) and CLI smoke (yt-transcript, yt-frames timestamps/interval modes,
 yt-tools cache). YouTube + yt-dlp + ffmpeg are mocked in the smoke layer — no
 network is touched. E2E on a real URL lives in the `claude-skills` repo
 (`using-yt-tools-test-trigger`).
