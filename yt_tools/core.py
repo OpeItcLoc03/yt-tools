@@ -1,0 +1,94 @@
+"""Pure helpers — video-id extraction, timestamp conversions, cache path layout."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+_PATH_PATTERNS = ("/shorts/", "/embed/", "/v/", "/live/")
+
+
+def extract_video_id(url_or_id: str) -> str:
+    """Extract the 11-char YouTube video id from a URL or accept a bare id.
+
+    Supports watch?v=, youtu.be/, /shorts/, /embed/, /v/, /live/ forms.
+    Raises ValueError if no id can be found.
+    """
+    if not url_or_id:
+        raise ValueError("empty url/id")
+
+    if _VIDEO_ID_RE.match(url_or_id):
+        return url_or_id
+
+    parsed = urlparse(url_or_id)
+    host = (parsed.hostname or "").lower()
+
+    if host in ("youtu.be",):
+        vid = parsed.path.lstrip("/").split("/")[0]
+        if _VIDEO_ID_RE.match(vid):
+            return vid
+
+    if host.endswith("youtube.com") or host == "youtube.com":
+        if parsed.path in ("/watch", "/watch/"):
+            qs = parse_qs(parsed.query)
+            vids = qs.get("v") or []
+            if vids and _VIDEO_ID_RE.match(vids[0]):
+                return vids[0]
+        for pat in _PATH_PATTERNS:
+            if pat in parsed.path:
+                tail = parsed.path.split(pat, 1)[1].split("/")[0]
+                if _VIDEO_ID_RE.match(tail):
+                    return tail
+
+    raise ValueError(f"cannot extract video id from: {url_or_id!r}")
+
+
+def format_seconds_to_mmss(seconds: float) -> str:
+    """Format seconds as ``m:ss`` or ``h:mm:ss`` (no zero-padded hours)."""
+    s = int(seconds)
+    if s < 0:
+        s = 0
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{sec:02d}"
+    return f"{m}:{sec:02d}"
+
+
+def format_seconds_for_filename(seconds: float) -> str:
+    """Format seconds as a fixed-width filename-friendly string (``mmss`` or ``hhmmss``)."""
+    s = int(seconds)
+    if s < 0:
+        s = 0
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    if h:
+        return f"{h:02d}{m:02d}{sec:02d}"
+    return f"{m:02d}{sec:02d}"
+
+
+def parse_timestamp_to_seconds(ts: str) -> int:
+    """Parse ``ss``, ``m:ss``, or ``h:mm:ss`` into integer seconds."""
+    parts = ts.strip().split(":")
+    if len(parts) > 3:
+        raise ValueError(f"too many parts in timestamp: {ts!r}")
+    try:
+        nums = [int(p) for p in parts]
+    except ValueError as e:
+        raise ValueError(f"non-integer component in timestamp: {ts!r}") from e
+    if len(nums) == 1:
+        return nums[0]
+    if len(nums) == 2:
+        m, s = nums
+        return m * 60 + s
+    h, m, s = nums
+    return h * 3600 + m * 60 + s
+
+
+def cache_dir_for(url_or_id: str, base: Path | None = None) -> Path:
+    """Return ``<base>/yt-cache/<video-id>``. Does not create the directory."""
+    vid = extract_video_id(url_or_id)
+    root = (base or Path.cwd()) / "yt-cache" / vid
+    return root
