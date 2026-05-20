@@ -45,42 +45,60 @@ Layout per video:
 
 ## Install
 
-Lives in `~/projects/.common/lib/yt-tools/`. Install editable into a venv.
+Lives in `~/projects/.common/lib/yt-tools/`. **Recommended: pipx** — creates an
+isolated venv and drops shims into `~/.local/bin/`, which is on PATH on every
+sane setup (including the default Claude Code shell on Windows). No
+`Activate.ps1` dance, no venv-path tricks in callers.
 
-**Windows (PowerShell):**
+**Windows (PowerShell) / Linux / macOS:**
+
+```powershell
+# 1. bootstrap pipx if not yet installed (one-time per user)
+python -m pip install --user pipx
+python -m pipx ensurepath        # adds ~/.local/bin to PATH; restart shell after
+
+# 2. install yt-tools editable — in-place edits in lib/yt-tools are picked up
+python -m pipx install --editable ~/projects/.common/lib/yt-tools
+```
+
+This exposes `yt-transcript`, `yt-frames`, `yt-watch`, `yt-tools` (and a
+shimmed `yt-dlp`) in `~/.local/bin/`.
+
+**External binary still required:** `ffmpeg` — system-level, not pip-installable.
+
+- Windows: `winget install Gyan.FFmpeg`
+- macOS: `brew install ffmpeg`
+- Linux (Debian/Ubuntu): `apt install ffmpeg`
+
+> **Windows-gotcha for ffmpeg.** `winget install Gyan.FFmpeg` writes
+> `ffmpeg.exe` into the per-user PATH, which the *current* shell session does
+> not re-read — including subshells inside a running Claude Code session.
+> Either restart the terminal/CC session, **or** prepend the install dir for
+> the current session: glob
+> `~/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_*/ffmpeg-*-full_build/bin/`
+> and add to `$env:PATH`. The `using-yt-tools` v0.3.0+ skill does this resolve
+> automatically as Step 0 of every flow.
+
+### Legacy / fallback install (without pipx)
+
+If pipx isn't viable (corporate-restricted Python, ancient stdlib, etc.),
+the old venv-method still works — the skill auto-resolves either install
+layout:
 
 ```powershell
 cd ~/projects/.common/lib/yt-tools
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1     # or Linux/macOS: source .venv/bin/activate
 pip install -e .
 ```
 
-**Linux / macOS (bash):**
+Then either activate the venv per-shell, or invoke binaries via full path
+(`~/projects/.common/lib/yt-tools/.venv/{Scripts,bin}/yt-frames`). With this
+layout binaries are **not** on PATH automatically — the `using-yt-tools`
+v0.3.0+ skill falls back to the venv path when `Get-Command yt-frames` is
+empty.
 
-```bash
-cd ~/projects/.common/lib/yt-tools
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-External binaries required on PATH (not pip-installed):
-
-- **yt-dlp** — `winget install yt-dlp.yt-dlp` / `brew install yt-dlp` / `pip install -U yt-dlp`
-- **ffmpeg** — `winget install Gyan.FFmpeg` / `brew install ffmpeg` / `apt install ffmpeg`
-
-> **Windows note.** `winget install` writes to the per-user PATH, which the
-> *current* shell session does not re-read — **including both git-bash and
-> PowerShell subshells inside a Claude Code session** (process-env inheritance
-> is identical). After installing yt-dlp or ffmpeg via winget, **restart the
-> terminal** (and the Claude Code session if running). Verify with
-> `where.exe ffmpeg` / `where.exe yt-dlp` in the new shell. If a restart is
-> impractical, look up the install path via `winget show <package>` (Gyan
-> typically nests under `%LOCALAPPDATA%\Microsoft\WinGet\Packages\...`) and
-> append it to `$env:Path` for the current session only.
-
-Verify entry-points (after `pip install -e .`):
+### Verify
 
 ```powershell
 yt-transcript --help
