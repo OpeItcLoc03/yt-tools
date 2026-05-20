@@ -9,6 +9,13 @@ from typing import Iterable, Sequence
 from yt_tools.core import format_seconds_to_mmss
 
 DEFAULT_PARAGRAPH_GAP_SECONDS = 4.0
+# Hard cap on a paragraph's elapsed-time span — guarantees anchors at sane intervals
+# even when snippets stream without 4s gaps (community/auto-submitted subs).
+DEFAULT_MAX_PARAGRAPH_SECONDS = 45.0
+# Minimum elapsed time before a sentence-final punctuation mark is allowed to split.
+DEFAULT_SENTENCE_SPLIT_SECONDS = 15.0
+
+_SENTENCE_END_CHARS = frozenset(".?!…")
 
 
 @dataclass(frozen=True)
@@ -26,8 +33,16 @@ def _clean(text: str) -> str:
     return " ".join(text.split())
 
 
+def _ends_sentence(text: str) -> bool:
+    stripped = text.rstrip().rstrip(')"]\'')
+    return bool(stripped) and stripped[-1] in _SENTENCE_END_CHARS
+
+
 def _group_paragraphs(
-    snippets: Sequence[Snippet], paragraph_gap_seconds: float
+    snippets: Sequence[Snippet],
+    paragraph_gap_seconds: float,
+    max_paragraph_seconds: float = DEFAULT_MAX_PARAGRAPH_SECONDS,
+    sentence_split_seconds: float = DEFAULT_SENTENCE_SPLIT_SECONDS,
 ) -> list[tuple[float, str]]:
     paragraphs: list[tuple[float, str]] = []
     cur_start: float | None = None
@@ -42,7 +57,14 @@ def _group_paragraphs(
             cur_parts = [clean]
             last_end = s.start + s.duration
             continue
-        if s.start - last_end > paragraph_gap_seconds:
+        gap = s.start - last_end
+        elapsed = s.start - cur_start
+        split = (
+            gap > paragraph_gap_seconds
+            or elapsed > max_paragraph_seconds
+            or (elapsed >= sentence_split_seconds and _ends_sentence(cur_parts[-1]))
+        )
+        if split:
             paragraphs.append((cur_start, " ".join(cur_parts)))
             cur_start = s.start
             cur_parts = [clean]
@@ -58,6 +80,8 @@ def snippets_to_markdown(
     snippets: Iterable[Snippet],
     metadata: dict,
     paragraph_gap_seconds: float = DEFAULT_PARAGRAPH_GAP_SECONDS,
+    max_paragraph_seconds: float = DEFAULT_MAX_PARAGRAPH_SECONDS,
+    sentence_split_seconds: float = DEFAULT_SENTENCE_SPLIT_SECONDS,
 ) -> str:
     """Render snippets as clean markdown with metadata header and [mm:ss] paragraph anchors.
 
@@ -89,7 +113,12 @@ def snippets_to_markdown(
     header_lines.append("")
 
     body_lines: list[str] = []
-    paragraphs = _group_paragraphs(list(snippets), paragraph_gap_seconds)
+    paragraphs = _group_paragraphs(
+        list(snippets),
+        paragraph_gap_seconds,
+        max_paragraph_seconds,
+        sentence_split_seconds,
+    )
     for start, text in paragraphs:
         anchor = format_seconds_to_mmss(start)
         body_lines.append(f"[{anchor}] {text}")
