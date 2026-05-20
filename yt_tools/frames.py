@@ -56,11 +56,29 @@ def _require_bin(name: str) -> None:
         raise RuntimeError(f"{name} not found on PATH")
 
 
+def _format_subprocess_failure(proc: subprocess.CompletedProcess, label: str) -> str:
+    """Build a self-contained error message — exit code + stderr/stdout tail, or an explicit no-output hint."""
+    stderr = (proc.stderr or "").strip()
+    stdout = (proc.stdout or "").strip()
+    parts = [f"{label} failed (exit {proc.returncode})"]
+    if stderr:
+        parts.append(f"stderr: {stderr[-500:]}")
+    if stdout and not stderr:
+        parts.append(f"stdout: {stdout[-500:]}")
+    if not stderr and not stdout:
+        parts.append("no output captured — check binary install / PATH / network")
+    return " | ".join(parts)
+
+
 def _ensure_source_mp4(url: str, dest: Path, yt_dlp_bin: str = "yt-dlp") -> Path:
     """Download the source video to ``dest`` if it doesn't already exist. Returns ``dest``."""
     if dest.exists() and dest.stat().st_size > 0:
         return dest
     _require_bin(yt_dlp_bin)
+    # yt-dlp needs ffmpeg for muxing bestvideo+bestaudio into mp4. Pre-check so a
+    # missing-ffmpeg failure surfaces as "ffmpeg not found on PATH" rather than an
+    # opaque "yt-dlp source download failed:" with empty stderr.
+    _require_bin("ffmpeg")
     dest.parent.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(
         [
@@ -68,7 +86,6 @@ def _ensure_source_mp4(url: str, dest: Path, yt_dlp_bin: str = "yt-dlp") -> Path
             "-f", SOURCE_FORMAT_SPEC,
             "--merge-output-format", "mp4",
             "-o", str(dest),
-            "--no-warnings",
             "--no-progress",
             url,
         ],
@@ -77,7 +94,7 @@ def _ensure_source_mp4(url: str, dest: Path, yt_dlp_bin: str = "yt-dlp") -> Path
         check=False,
     )
     if proc.returncode != 0 or not dest.exists():
-        raise RuntimeError(f"yt-dlp source download failed: {proc.stderr.strip()}")
+        raise RuntimeError(_format_subprocess_failure(proc, "yt-dlp source download"))
     return dest
 
 
@@ -100,7 +117,7 @@ def _ffmpeg_extract_from_file(source: Path, seconds: float, out_path: Path, ffmp
         check=False,
     )
     if proc.returncode != 0 or not out_path.exists():
-        raise RuntimeError(f"ffmpeg extract failed at {seconds}s: {proc.stderr.strip()[-300:]}")
+        raise RuntimeError(_format_subprocess_failure(proc, f"ffmpeg extract at {seconds}s"))
 
 
 def _ffmpeg_extract_streaming(
@@ -114,13 +131,13 @@ def _ffmpeg_extract_streaming(
     _require_bin(yt_dlp_bin)
     _require_bin(ffmpeg_bin)
     g = subprocess.run(
-        [yt_dlp_bin, "-f", SOURCE_FORMAT_SPEC, "-g", "--no-warnings", url],
+        [yt_dlp_bin, "-f", SOURCE_FORMAT_SPEC, "-g", url],
         capture_output=True,
         text=True,
         check=False,
     )
     if g.returncode != 0:
-        raise RuntimeError(f"yt-dlp -g failed: {g.stderr.strip()}")
+        raise RuntimeError(_format_subprocess_failure(g, "yt-dlp -g"))
     direct_url = g.stdout.strip().splitlines()[0]
     if not direct_url:
         raise RuntimeError("yt-dlp -g returned no URL")
@@ -140,7 +157,7 @@ def _ffmpeg_extract_streaming(
         check=False,
     )
     if proc.returncode != 0 or not out_path.exists():
-        raise RuntimeError(f"ffmpeg streaming extract failed at {seconds}s: {proc.stderr.strip()[-300:]}")
+        raise RuntimeError(_format_subprocess_failure(proc, f"ffmpeg streaming extract at {seconds}s"))
 
 
 def _detect_scene_timestamps(source: Path, threshold: float) -> list[float]:
