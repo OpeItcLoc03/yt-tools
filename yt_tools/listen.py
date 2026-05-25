@@ -6,13 +6,13 @@ Two modes (mutually exclusive):
 
 Pipeline per timestamp T:
   1. Ensure source.mp4 cache (reuse ``_ensure_source_mp4`` from frames.py).
-  2. ``ffmpeg -ss T -t DURATION -ac 1 -ar SAMPLE_RATE`` → ``audio_TTTT.wav``.
+  2. ``ffmpeg -ss T -t DURATION -ac 1 -ar SAMPLE_RATE`` → ``clip_TTTT.wav``.
   3. ``librosa.load`` → y, sr → spectral / hpss / chroma / peak features.
   4. ``bpm_detector.AudioAnalyzer.analyze_file(comprehensive=True)`` →
      tempo / key / chord progression / song-form (graceful fallback to
      librosa beat-track if the dep is unavailable).
   5. ``matplotlib`` render mel-spectrogram (log-power, viridis, ~1024×384)
-     → ``spectrogram_TTTT.png``.
+     → ``spectrum_TTTT.png``.
   6. Write ``features_TTTT.md`` with required sections.
 
 Each artifact prints ``Wrote: <abs path>`` on its own stdout line so callers
@@ -568,7 +568,7 @@ def run(
 
     for s in seconds_list:
         stamp = format_seconds_for_filename(s)
-        wav_path = out_dir / f"audio_{stamp}.wav"
+        wav_path = out_dir / f"clip_{stamp}.wav"
         # Always extract the WAV — bpm_detector + librosa both need a file/array.
         if source is not None:
             _ffmpeg_extract_wav(source, s, duration, sample_rate, wav_path)
@@ -583,7 +583,7 @@ def run(
 
         # Spectrogram (mel or linear).
         if not no_spectrogram:
-            spec_path = out_dir / f"spectrogram_{stamp}.png"
+            spec_path = out_dir / f"spectrum_{stamp}.png"
             _render_spectrogram(y, sr, spec_path, linear=linear)
 
         # Chroma — bonus.
@@ -614,7 +614,7 @@ def run(
                 pass
 
         if not no_spectrogram:
-            spec_path = out_dir / f"spectrogram_{stamp}.png"
+            spec_path = out_dir / f"spectrum_{stamp}.png"
             written.append(spec_path.resolve())
             print(f"Wrote: {spec_path.resolve()}")
 

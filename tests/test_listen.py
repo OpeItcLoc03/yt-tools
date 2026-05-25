@@ -253,10 +253,10 @@ def test_run_pipeline_smoke(tmp_path, capsys, monkeypatch):
         assert p.exists()
     # Filename stems use the canonical mmss layout.
     names = {p.name for p in written}
-    assert "audio_0030.wav" in names
-    assert "spectrogram_0030.png" in names
+    assert "clip_0030.wav" in names
+    assert "spectrum_0030.png" in names
     assert "features_0030.md" in names
-    assert "audio_0100.wav" in names
+    assert "clip_0100.wav" in names
 
 
 def test_run_no_wav_deletes_file(tmp_path, capsys, monkeypatch):
@@ -294,11 +294,11 @@ def test_run_no_wav_deletes_file(tmp_path, capsys, monkeypatch):
 
     # WAV not in returned paths, but spectrogram + features are.
     names = {p.name for p in written}
-    assert "audio_0030.wav" not in names
-    assert "spectrogram_0030.png" in names
+    assert "clip_0030.wav" not in names
+    assert "spectrum_0030.png" in names
     assert "features_0030.md" in names
     # WAV file deleted from disk.
-    assert not (audio_dir / "audio_0030.wav").exists()
+    assert not (audio_dir / "clip_0030.wav").exists()
 
 
 def test_bpm_detector_fallback_when_unavailable(tmp_path, capsys, monkeypatch):

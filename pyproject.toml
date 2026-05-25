@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yt-tools"
-version = "0.2.0"
+version = "0.2.1"
 description = "CLI wrap for iterative YouTube watching by LLM agents — transcript + targeted frame extraction"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
