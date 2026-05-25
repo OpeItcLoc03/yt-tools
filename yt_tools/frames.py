@@ -28,6 +28,7 @@ from yt_tools.core import (
     extract_video_id,
     force_utf8_streams,
     format_seconds_for_filename,
+    interval_timestamps,
     parse_timestamp_to_seconds,
 )
 
@@ -169,17 +170,6 @@ def _detect_scene_timestamps(source: Path, threshold: float) -> list[float]:
     return [s[0].get_seconds() for s in scenes]
 
 
-def _interval_timestamps(duration_seconds: float, interval: float) -> list[float]:
-    if duration_seconds <= 0 or interval <= 0:
-        return []
-    out: list[float] = []
-    t = 0.0
-    while t < duration_seconds:
-        out.append(t)
-        t += interval
-    return out
-
-
 def run(
     url: str,
     out_dir: Path | None = None,
@@ -204,7 +194,7 @@ def run(
         if not interval:
             raise ValueError("mode=interval requires --interval")
         meta = fetch_video_metadata(url)
-        seconds_list = _interval_timestamps(meta["duration"], interval)
+        seconds_list = interval_timestamps(meta["duration"], interval)
     elif mode == "scene":
         if no_cache_source:
             raise ValueError("scene mode requires a downloaded source (drop --no-cache-source)")

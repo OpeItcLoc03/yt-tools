@@ -54,6 +54,9 @@ class TestParseDuration:
     def test_minutes_suffix(self):
         assert listen_mod.parse_duration("2m") == 120.0
 
+    def test_hours_suffix(self):
+        assert listen_mod.parse_duration("1h") == 3600.0
+
     def test_fractional(self):
         assert listen_mod.parse_duration("0.5s") == 0.5
 

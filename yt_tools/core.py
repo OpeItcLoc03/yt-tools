@@ -104,3 +104,19 @@ def cache_dir_for(url_or_id: str, base: Path | None = None) -> Path:
     vid = extract_video_id(url_or_id)
     root = (base or Path.cwd()) / "yt-cache" / vid
     return root
+
+
+def interval_timestamps(duration_seconds: float, interval: float) -> list[float]:
+    """Generate ``[0, interval, 2*interval, ...]`` up to (but not including) ``duration_seconds``.
+
+    Returns an empty list for non-positive inputs. Shared by ``yt-frames`` and ``yt-listen``
+    in their ``--mode interval`` paths.
+    """
+    if duration_seconds <= 0 or interval <= 0:
+        return []
+    out: list[float] = []
+    t = 0.0
+    while t < duration_seconds:
+        out.append(t)
+        t += interval
+    return out

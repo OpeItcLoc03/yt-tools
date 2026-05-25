@@ -39,6 +39,7 @@ from yt_tools.core import (
     force_utf8_streams,
     format_seconds_for_filename,
     format_seconds_to_mmss,
+    interval_timestamps,
     parse_timestamp_to_seconds,
 )
 from yt_tools.frames import (
@@ -50,13 +51,16 @@ from yt_tools.frames import (
 
 DEFAULT_DURATION_SECONDS = 30.0
 DEFAULT_SAMPLE_RATE = 22050
-_DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*(s|sec|m|min)?$", re.IGNORECASE)
+_DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*(s|sec|m|min|h)?$", re.IGNORECASE)
 _PITCH_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
 
 def parse_duration(spec: str) -> float:
-    """Parse ``30s`` / ``1m`` / bare seconds into a float. Reuses parse_interval's grammar
-    but is named explicitly so CLI errors mention ``--duration``."""
+    """Parse ``30s`` / ``1m`` / ``2h`` / bare seconds into a float number of seconds.
+
+    Grammar parity with ``parse_interval`` — hour-scale durations are absurd for
+    a per-fragment clip (default 30s) but the parser does not artificially reject them.
+    """
     m = _DURATION_RE.match(spec.strip())
     if not m:
         raise ValueError(f"invalid duration: {spec!r}")
@@ -66,6 +70,8 @@ def parse_duration(spec: str) -> float:
         return value
     if unit in ("m", "min"):
         return value * 60.0
+    if unit == "h":
+        return value * 3600.0
     raise ValueError(f"invalid duration unit: {unit!r}")
 
 
@@ -165,17 +171,6 @@ def _ffmpeg_extract_wav_streaming(
     )
     if proc.returncode != 0 or not out_path.exists():
         raise RuntimeError(_format_subprocess_failure(proc, f"ffmpeg streaming WAV at {seconds}s"))
-
-
-def _interval_timestamps(duration_seconds: float, interval: float) -> list[float]:
-    if duration_seconds <= 0 or interval <= 0:
-        return []
-    out: list[float] = []
-    t = 0.0
-    while t < duration_seconds:
-        out.append(t)
-        t += interval
-    return out
 
 
 def _hz_to_note(freq_hz: float) -> str:
@@ -550,7 +545,7 @@ def run(
         if not interval:
             raise ValueError("mode=interval requires --interval")
         meta = fetch_video_metadata(url)
-        seconds_list = _interval_timestamps(meta["duration"], interval)
+        seconds_list = interval_timestamps(meta["duration"], interval)
     else:
         raise ValueError(f"unknown mode: {mode!r}")
 
@@ -569,6 +564,10 @@ def run(
     for s in seconds_list:
         stamp = format_seconds_for_filename(s)
         wav_path = out_dir / f"clip_{stamp}.wav"
+        spec_path = out_dir / f"spectrum_{stamp}.png"
+        chroma_path = out_dir / f"chroma_{stamp}.png"
+        md_path = out_dir / f"features_{stamp}.md"
+
         # Always extract the WAV — bpm_detector + librosa both need a file/array.
         if source is not None:
             _ffmpeg_extract_wav(source, s, duration, sample_rate, wav_path)
@@ -583,12 +582,10 @@ def run(
 
         # Spectrogram (mel or linear).
         if not no_spectrogram:
-            spec_path = out_dir / f"spectrum_{stamp}.png"
             _render_spectrogram(y, sr, spec_path, linear=linear)
 
         # Chroma — bonus.
         if chroma:
-            chroma_path = out_dir / f"chroma_{stamp}.png"
             _render_chroma(y, sr, chroma_path)
 
         # Features markdown.
@@ -599,7 +596,6 @@ def run(
             bpm_result=bpm_result,
             fallback_basic=fallback,
         )
-        md_path = out_dir / f"features_{stamp}.md"
         md_path.write_text(md, encoding="utf-8")
 
         # Now print in a stable order: WAV → spectrogram → chroma → features.
@@ -614,12 +610,10 @@ def run(
                 pass
 
         if not no_spectrogram:
-            spec_path = out_dir / f"spectrum_{stamp}.png"
             written.append(spec_path.resolve())
             print(f"Wrote: {spec_path.resolve()}")
 
         if chroma:
-            chroma_path = out_dir / f"chroma_{stamp}.png"
             written.append(chroma_path.resolve())
             print(f"Wrote: {chroma_path.resolve()}")
 
@@ -652,7 +646,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--duration",
         default=f"{DEFAULT_DURATION_SECONDS:.0f}s",
-        help=f"Per-fragment duration (default {DEFAULT_DURATION_SECONDS:.0f}s). Example: 10s / 1m",
+        help=f"Per-fragment duration (default {DEFAULT_DURATION_SECONDS:.0f}s). Example: 10s / 1m / 1h",
     )
     parser.add_argument(
         "--sample-rate",
