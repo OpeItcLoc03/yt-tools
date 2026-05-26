@@ -1,7 +1,7 @@
 ---
 name: using-yt-tools
-version: 0.3.0
-description: Three flows for YouTube content. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. Triggers (mixed RU/EN — same skill serves both audiences) — "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", or any youtube.com URL. CLI installed via `pipx install yt-tools` (from PyPI; the bundled plugin SessionStart hook auto-installs it). YouTube-only — for Vimeo / Twitch / local files use other tools.
+version: 0.3.1
+description: Three flows for YouTube content. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. Triggers (mixed RU/EN — same skill serves both audiences) — "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", or any youtube.com URL. CLI installed via the bundled SessionStart hook which runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` from the plugin's local clone (PyPI release deferred post-v1). YouTube-only — for Vimeo / Twitch / local files use other tools.
 ---
 
 # using-yt-tools
@@ -51,10 +51,12 @@ Three distinct flows, picked by user intent:
 
 All three flows assume the `yt-tools` CLI is installed. When this skill
 ships as part of the `yt-tools` Claude Code plugin, the `SessionStart`
-hook runs `pipx install yt-tools` automatically on the first session after
-plugin install. When the skill is used standalone, the user must run
-`pipx install yt-tools` themselves (see Prerequisites → Installing the
-CLI). Binaries may or may not be on the current session's PATH — that's
+hook runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` automatically
+on the first session after plugin install (installs from the plugin's
+local clone, not PyPI; falls back to core install if the `[full]` extras
+fetch fails). When the skill is used standalone, the user installs from
+the Git repo themselves (see Prerequisites → Installing the CLI). Binaries
+may or may not be on the current session's PATH — that's
 normal, especially right after a fresh `winget install` or `pipx
 ensurepath` (PATH is per-shell, not picked up by the *current* shell).
 **Never abort on a bare `Get-Command yt-frames` / `command -v yt-frames`

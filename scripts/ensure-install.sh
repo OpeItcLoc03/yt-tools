@@ -61,12 +61,49 @@ if [ "$needs_install" = "true" ]; then
     else
         log "yt-tools not installed; installing from $PLUGIN_ROOT via pipx..."
     fi
-    # --force allows reinstall over existing; installs from the plugin clone
-    # itself (not from PyPI). For chord-progression / structure features, the
-    # user can later run:
-    #   pipx inject yt-tools "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0"
-    if ! pipx install --force "$PLUGIN_ROOT" >&2; then
-        log "WARN: pipx install from $PLUGIN_ROOT failed. Investigate pipx state."
+
+    # Python health probe — bail if the candidate interpreter's stdlib is
+    # broken (e.g. uv-toolchain drift leaves SRE magic mismatch and re.compile
+    # crashes). Without this we silently replace a working venv with a broken
+    # one. YT_TOOLS_PYTHON env-var overrides the probe target and is also
+    # forwarded to pipx via --python.
+    probe_python="${YT_TOOLS_PYTHON:-}"
+    if [ -z "$probe_python" ]; then
+        probe_python="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)"
+    fi
+    if [ -n "$probe_python" ]; then
+        if ! "$probe_python" -c "import re; re.compile('x')" >/dev/null 2>&1; then
+            log "WARN: $probe_python failed health check (import re / re.compile crashed)."
+            log "Refusing to install — would replace a working pipx venv with a broken interpreter."
+            log "Fix: set YT_TOOLS_PYTHON=/path/to/known-good/python and start a new session,"
+            log "or repair the system interpreter (uv toolchain refresh / pyenv rebuild)."
+            exit 0
+        fi
+    fi
+
+    # Uninstall first if a previous venv exists. pipx `install --force` with
+    # the uv backend leaves a previous venv in place ("not created in this
+    # session") and the reinstall silently no-ops, so we drop --force in
+    # favour of explicit uninstall + clean install. Idempotent (silent if
+    # nothing is installed).
+    if [ -n "$installed_version" ]; then
+        pipx uninstall yt-tools >&2 2>/dev/null || \
+            log "WARN: pipx uninstall yt-tools failed; will attempt install anyway."
+    fi
+
+    # Install with [full] extras (chord progression + structure detection via
+    # bpm-detector); fall back to core if the VCS dep fetch fails (corporate
+    # proxy blocking PEP 508 direct refs, transient network, etc.). Flows A
+    # and B work in either mode; Flow C runs librosa-only without [full].
+    pipx_args=(install)
+    if [ -n "${YT_TOOLS_PYTHON:-}" ]; then
+        pipx_args+=(--python "$YT_TOOLS_PYTHON")
+    fi
+    if ! pipx "${pipx_args[@]}" "${PLUGIN_ROOT}[full]" >&2; then
+        log "WARN: install with [full] extras failed (likely bpm-detector VCS fetch blocked); falling back to core install."
+        if ! pipx "${pipx_args[@]}" "$PLUGIN_ROOT" >&2; then
+            log "WARN: core install also failed. Investigate pipx state."
+        fi
     fi
 fi
 

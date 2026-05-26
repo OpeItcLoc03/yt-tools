@@ -81,6 +81,21 @@ extraction. Install via your OS package manager:
 > Either restart the terminal, or prepend the install directory to `$env:PATH`
 > for the current session.
 
+### Plugin hook environment variables
+
+The bundled `SessionStart` hook honours two environment variables, both
+optional:
+
+| Var | Effect |
+|---|---|
+| `YT_TOOLS_PYTHON` | Full path to a Python interpreter. Used both for the pre-install health probe and forwarded to `pipx install --python` so the venv is built with this exact interpreter. Set this when your default Python is broken (e.g. `uv` toolchain drift surfacing `SRE module mismatch` from `re.compile`). |
+| `CLAUDE_PLUGIN_ROOT` | Set automatically by Claude Code to the plugin's local clone; the hook uses it as the install source. Not for manual override. |
+
+Before each install, the hook probes the candidate interpreter with
+`python -c "import re; re.compile('x')"`. If the probe crashes (broken
+stdlib), the hook refuses to install and preserves any existing pipx-venv
+rather than replacing it with a broken one.
+
 ## Quick start
 
 The CLIs are designed for an **iterative** loop: cheap transcript first,
