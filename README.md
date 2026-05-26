@@ -19,40 +19,54 @@ to guess where the artefact landed:
 
 ## Installation
 
-`yt-tools` is published on PyPI. **Recommended: [`pipx`](https://pipx.pypa.io/)**
-— it creates an isolated venv and drops CLI shims into `~/.local/bin/`, which
-is on PATH on every sane setup.
+`yt-tools` v1 ships **via a Claude Code plugin** (recommended for agent
+workflows) or **directly from this Git repository** (for standalone CLI
+use in any environment). PyPI distribution is deferred to a future release.
+
+### As a Claude Code plugin (recommended for agent workflows)
+
+```text
+/plugin marketplace add OpeItcLoc03/claude-plugins
+/plugin install yt-tools@opeitcloc03-claude-plugins
+```
+
+The plugin's `SessionStart` hook runs
+`pipx install --force "$CLAUDE_PLUGIN_ROOT"` on the first session after
+install, exposing `yt-transcript`, `yt-frames`, `yt-listen`, `yt-watch`,
+`yt-tools` (and a shimmed `yt-dlp`) in `~/.local/bin/`. The bundled
+`using-yt-tools` skill orchestrates the three primary flows (iterative
+watch / targeted frames / audio analysis) for the agent.
+
+The plugin marketplace catalog lives at
+[`OpeItcLoc03/claude-plugins`](https://github.com/OpeItcLoc03/claude-plugins);
+this repository at [`OpeItcLoc03/yt-tools`](https://github.com/OpeItcLoc03/yt-tools).
+
+### Standalone CLI (any environment)
+
+Install directly from this Git repo via [`pipx`](https://pipx.pypa.io/):
 
 ```bash
 # 1. bootstrap pipx (one-time per user)
 python -m pip install --user pipx
-python -m pipx ensurepath     # adds ~/.local/bin to PATH; restart shell after
+python -m pipx ensurepath          # adds ~/.local/bin to PATH; restart shell after
 
-# 2. install yt-tools (core)
-pipx install yt-tools
+# 2. install yt-tools (core) from this repo
+pipx install git+https://github.com/OpeItcLoc03/yt-tools.git
+
+# 3. (optional) install the [full] extra for chord progression + structure analysis
+pipx install "git+https://github.com/OpeItcLoc03/yt-tools.git#egg=yt-tools[full]"
 ```
 
-Core install ships `yt-transcript`, `yt-frames`, `yt-listen`, `yt-watch`,
-`yt-tools` (and a shimmed `yt-dlp`) in `~/.local/bin/`. `yt-listen` works
-out of the box with `librosa`'s `beat_track` + Krumhansl-Schmuckler key
-estimation.
+Core install gets you `yt-listen` with `librosa`'s `beat_track` +
+Krumhansl-Schmuckler key estimation. The `[full]` extra pulls in
+[`bpm-detector`](https://github.com/libraz/bpm-detector) (VCS dep, not yet
+on PyPI) for richer features per timestamp — chord progression,
+structural segments, refined BPM, confidence-scored key. Without
+`[full]`, `yt-listen` gracefully falls back to librosa-only basics.
 
-### Full audio analysis (chord progression + structure)
+### ffmpeg (external binary, all install paths)
 
-```bash
-pipx install "yt-tools[full]"
-```
-
-The `[full]` extra adds [`bpm-detector`](https://github.com/libraz/bpm-detector)
-via direct VCS reference (not yet on PyPI). With `[full]` installed,
-`yt-listen` outputs richer features per timestamp: chord progression,
-structural segments, refined BPM, and a confidence-scored key. Without it,
-`yt-listen` gracefully falls back to librosa-only basics (BPM + key are
-still produced).
-
-### ffmpeg (external binary, all installs)
-
-`yt-tools` shells out to `ffmpeg` for source download caching and per-clip
+`yt-tools` shells out to `ffmpeg` for source-video caching and per-clip
 extraction. Install via your OS package manager:
 
 | OS | Command |
@@ -66,21 +80,6 @@ extraction. Install via your OS package manager:
 > the per-user PATH, which the *current* shell session does not re-read.
 > Either restart the terminal, or prepend the install directory to `$env:PATH`
 > for the current session.
-
-### Use inside Claude Code (plugin)
-
-A Claude Code plugin is available — installing it auto-runs `pipx install yt-tools`
-and probes `ffmpeg` on session start, then activates the `using-yt-tools`
-skill that orchestrates the three primary flows for you:
-
-```
-/plugin marketplace add OpeItcLoc03/claude-plugins
-/plugin install yt-tools@opeitcloc03-claude-plugins
-```
-
-The plugin marketplace and `yt-tools` repository live at
-[`OpeItcLoc03/claude-plugins`](https://github.com/OpeItcLoc03/claude-plugins)
-and [`OpeItcLoc03/yt-tools`](https://github.com/OpeItcLoc03/yt-tools).
 
 ## Quick start
 

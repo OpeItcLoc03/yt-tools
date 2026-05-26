@@ -1,19 +1,45 @@
 # yt-tools plugin — SessionStart hook (PowerShell variant for Windows).
 #
 # Idempotent ensure-install: on every session start, verify that the
-# yt-tools PyPI package is installed via pipx at >= $PluginVersion, and
-# that ffmpeg is on PATH. Print install hints when something is missing;
-# never block session start (always exit 0, errors go to stderr).
+# yt-tools package is installed via pipx from this plugin's clone (the
+# $env:CLAUDE_PLUGIN_ROOT directory) at the version declared in the clone's
+# pyproject.toml, and that ffmpeg is on PATH. Print install hints when
+# something is missing; never block session start (always exit 0, errors go
+# to stderr).
 #
 # Invoked manually on Windows if hooks.json's POSIX command does not run:
 #   pwsh -File "$env:CLAUDE_PLUGIN_ROOT/scripts/ensure-install.ps1"
 
 $ErrorActionPreference = 'Continue'
-$PluginVersion = '0.3.0'
 
 function Write-PluginLog {
     param([string]$Message)
     [Console]::Error.WriteLine("[yt-tools] $Message")
+}
+
+# 0. Resolve plugin root ───────────────────────────────────────────────────
+$PluginRoot = $env:CLAUDE_PLUGIN_ROOT
+if (-not $PluginRoot) {
+    Write-PluginLog 'CLAUDE_PLUGIN_ROOT not set - running outside plugin context; skipping.'
+    exit 0
+}
+$pyprojectPath = Join-Path $PluginRoot 'pyproject.toml'
+if (-not (Test-Path $pyprojectPath)) {
+    Write-PluginLog "Missing pyproject.toml at $PluginRoot - plugin layout broken; skipping."
+    exit 0
+}
+
+# Parse declared version (line:  version = "X.Y.Z")
+$declaredVersion = $null
+foreach ($line in Get-Content $pyprojectPath) {
+    if ($line -match '^version\s*=\s*"([^"]+)"') {
+        $declaredVersion = $Matches[1]
+        break
+    }
+}
+if (-not $declaredVersion) {
+    Write-PluginLog "Could not parse version from $pyprojectPath; skipping."
+    exit 0
 }
 
 # 1. Probe pipx ────────────────────────────────────────────────────────────
@@ -25,7 +51,7 @@ if (-not (Get-Command pipx -ErrorAction SilentlyContinue)) {
     exit 0
 }
 
-# 2. Probe yt-tools via pipx list ──────────────────────────────────────────
+# 2. Probe yt-tools — install or update from plugin clone ──────────────────
 $installedVersion = $null
 try {
     $pipxOut = pipx list --short 2>$null
@@ -40,28 +66,24 @@ try {
 }
 
 $needsInstall = $true
-if ($installedVersion) {
-    try {
-        $installed = [version]$installedVersion
-        $required  = [version]$PluginVersion
-        if ($installed -ge $required) {
-            $needsInstall = $false
-            Write-PluginLog "yt-tools $installedVersion installed (>= plugin $PluginVersion) - ok"
-        }
-    } catch {
-        # version parse failed — fall through to install path
-    }
+if ($installedVersion -and $installedVersion -eq $declaredVersion) {
+    $needsInstall = $false
+    Write-PluginLog "yt-tools $installedVersion installed from plugin clone - ok"
 }
 
 if ($needsInstall) {
     if ($installedVersion) {
-        Write-PluginLog "yt-tools $installedVersion < $PluginVersion; upgrading via pipx..."
-        try { pipx upgrade yt-tools 2>&1 | ForEach-Object { Write-PluginLog $_ } }
-        catch { Write-PluginLog 'WARN: pipx upgrade yt-tools failed. Investigate manually.' }
+        Write-PluginLog "Installed $installedVersion != plugin $declaredVersion; reinstalling from $PluginRoot..."
     } else {
-        Write-PluginLog 'yt-tools not installed; installing via pipx...'
-        try { pipx install yt-tools 2>&1 | ForEach-Object { Write-PluginLog $_ } }
-        catch { Write-PluginLog 'WARN: pipx install yt-tools failed. Check PyPI access and pipx state.' }
+        Write-PluginLog "yt-tools not installed; installing from $PluginRoot via pipx..."
+    }
+    # --force allows reinstall over existing; installs from the plugin clone
+    # itself (not from PyPI). For chord-progression / structure features:
+    #   pipx inject yt-tools "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0"
+    try {
+        pipx install --force $PluginRoot 2>&1 | ForEach-Object { Write-PluginLog $_ }
+    } catch {
+        Write-PluginLog "WARN: pipx install from $PluginRoot failed. Investigate pipx state."
     }
 }
 

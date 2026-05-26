@@ -69,12 +69,20 @@ Two install paths, both equivalent for skill behaviour:
 
 1. **Via this plugin (recommended for Claude Code users).** Install the
    plugin once — `/plugin install yt-tools@opeitcloc03-claude-plugins` —
-   and the SessionStart hook handles `pipx install yt-tools` on the next
-   session. See the plugin README for marketplace setup.
-2. **Standalone (any environment).** `pipx install yt-tools` directly
-   from PyPI. For chord progression + structural analysis features in
-   `yt-listen`, use `pipx install "yt-tools[full]"` to pull in
-   `bpm-detector`.
+   and the SessionStart hook runs `pipx install --force "$CLAUDE_PLUGIN_ROOT"`
+   on the next session, installing yt-tools directly from the plugin's
+   local clone (no PyPI involvement). See the plugin README for marketplace
+   setup.
+2. **Standalone (any environment).** Install directly from the Git repo
+   via pipx:
+   ```bash
+   pipx install git+https://github.com/OpeItcLoc03/yt-tools.git
+   ```
+   For chord progression + structural analysis features in `yt-listen`,
+   use the `[full]` extra:
+   ```bash
+   pipx install "git+https://github.com/OpeItcLoc03/yt-tools.git#egg=yt-tools[full]"
+   ```
 
 External binary that is **not** pip-installable in either case:
 
@@ -112,9 +120,14 @@ a shimmed `yt-dlp`):
    regenerated. Install hint:
    ```
    python -m pip install --user pipx
-   python -m pipx ensurepath          # one-time; restart shell after
-   pipx install yt-tools              # or: pipx install "yt-tools[full]"
+   python -m pipx ensurepath                                       # one-time; restart shell after
+   pipx install git+https://github.com/OpeItcLoc03/yt-tools.git    # core
+   # For chord progression / structure analysis (optional):
+   # pipx install "git+https://github.com/OpeItcLoc03/yt-tools.git#egg=yt-tools[full]"
    ```
+   If you are inside Claude Code, prefer the plugin path instead — install
+   `yt-tools@opeitcloc03-claude-plugins` and the bundled SessionStart hook
+   does the pipx install from the plugin's local clone automatically.
 
 **ffmpeg**:
 
