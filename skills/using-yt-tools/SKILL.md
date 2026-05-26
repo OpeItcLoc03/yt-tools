@@ -1,6 +1,6 @@
 ---
 name: using-yt-tools
-version: 0.3.1
+version: 0.3.2
 description: Three flows for YouTube content. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. Triggers (mixed RU/EN — same skill serves both audiences) — "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", or any youtube.com URL. CLI installed via the bundled SessionStart hook which runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` from the plugin's local clone (PyPI release deferred post-v1). YouTube-only — for Vimeo / Twitch / local files use other tools.
 ---
 
