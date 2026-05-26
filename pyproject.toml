@@ -4,20 +4,58 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yt-tools"
-version = "0.2.2"
-description = "CLI wrap for iterative YouTube watching by LLM agents — transcript + targeted frame extraction"
+version = "0.3.0"
+description = "CLI suite for iterative YouTube watching by LLM agents: transcript with [mm:ss] anchors, targeted frame extraction, and FFT audio analysis (BPM, key, chord progression, spectral features)."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 license = { text = "MIT" }
-authors = [{ name = "vitya" }]
+authors = [{ name = "Victor Kuznetsov" }]
+keywords = [
+    "youtube",
+    "transcript",
+    "agent",
+    "claude",
+    "audio-analysis",
+    "fft",
+    "bpm",
+    "iterative",
+    "yt-dlp",
+    "ffmpeg",
+    "librosa",
+    "music-information-retrieval",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "youtube-transcript-api>=1.0.0",
     "yt-dlp>=2025.0.0",
     "scenedetect[opencv]>=0.6.4",
     "librosa>=0.11.0",
     "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+full = [
     "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0",
 ]
+test = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/OpeItcLoc03/yt-tools"
+Repository = "https://github.com/OpeItcLoc03/yt-tools"
+Issues = "https://github.com/OpeItcLoc03/yt-tools/issues"
 
 [project.scripts]
 yt-transcript = "yt_tools.transcript:main"
@@ -25,9 +63,6 @@ yt-frames = "yt_tools.frames:main"
 yt-watch = "yt_tools.watch:main"
 yt-listen = "yt_tools.listen:main"
 yt-tools = "yt_tools.cli:main"
-
-[project.optional-dependencies]
-test = ["pytest>=7.0"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

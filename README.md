@@ -1,193 +1,207 @@
 # yt-tools
 
-CLI wrap for **iterative agent-driven YouTube watching**. The agent reads the
-transcript, decides which moments matter, then pulls only those frames — no
-bulk download, no JSON soup, no MCP scaffolding.
+CLI suite for **iterative agent-driven YouTube watching**. The agent reads the
+transcript, decides which moments matter, then pulls only those frames or
+audio FFT slices — no bulk download, no JSON soup, no MCP scaffolding.
 
-## Primary flow
+Four CLIs, one cache, stdout-friendly absolute paths so the caller never has
+to guess where the artefact landed:
 
-```
-yt-transcript URL                         → ./yt-cache/<vid>/transcript.md
-agent reads markdown, picks [mm:ss] anchors
-yt-frames URL --timestamps 1:23,4:56      → ./yt-cache/<vid>/frames/frame_0123.jpg
-agent Read's each frame_*.jpg via its vision tool
-```
+- `yt-transcript` — clean markdown transcript with metadata header and
+  `[mm:ss]` paragraph anchors copy-paste-friendly for `--timestamps`.
+- `yt-frames` — targeted frame extraction by timestamp, scene-detect, or
+  fixed interval.
+- `yt-listen` — FFT audio analysis: per-timestamp clip + mel-spectrogram PNG +
+  features `.md` with BPM, key, chord progression, and spectral statistics.
+- `yt-watch` — combined transcript + scene-frames in one `.md` with
+  `![](frames/...)` sidecar embeds.
+- `yt-tools cache list | prune` — manage the source-mp4 cache.
 
-Last line of each CLI's stdout is the absolute path of the artefact (or one
-line per frame for `yt-frames`) so the caller never has to guess.
+## Installation
 
-## CLIs
+`yt-tools` is published on PyPI. **Recommended: [`pipx`](https://pipx.pypa.io/)**
+— it creates an isolated venv and drops CLI shims into `~/.local/bin/`, which
+is on PATH on every sane setup.
 
-| CLI | What it does |
-|---|---|
-| `yt-transcript URL [--out PATH] [--lang ru,en] [--distill]` | Clean markdown transcript with metadata header + `[mm:ss]` paragraph anchors copy-paste-friendly for `--timestamps`. |
-| `yt-frames URL [--out DIR] [--timestamps 1:23,4:56] [--mode interval --interval 30s] [--mode scene --scene-threshold N] [--no-cache-source]` | Targeted frame extraction. Default mode = timestamps. |
-| `yt-watch URL [--out DIR] [--scene-threshold N]` | Secondary: combined transcript + scene-frames in one `.md` with `![](frames/...)` sidecar embed. |
-| `yt-tools cache list \| prune [--older-than 7d]` | Manage the source-mp4 cache. |
-
-## Source-mp4 cache
-
-The first `yt-frames` call for a URL downloads `source.mp4` (≤720p) into
-`./yt-cache/<vid>/`. Subsequent calls reuse it via `ffmpeg -ss` (instant, no
-re-download). Pass `--no-cache-source` to stream the source through
-`yt-dlp -g | ffmpeg` instead — no mp4 written to disk.
-
-Layout per video:
-
-```
-./yt-cache/<vid>/
-  source.mp4           ← cached source (only with default cache mode)
-  transcript.md        ← yt-transcript output
-  watch.md             ← yt-watch output
-  frames/
-    frame_0123.jpg     ← yt-frames / yt-watch outputs (mmss zero-padded)
-```
-
-## Install
-
-Lives in `~/projects/.common/lib/yt-tools/`. **Recommended: pipx** — creates an
-isolated venv and drops shims into `~/.local/bin/`, which is on PATH on every
-sane setup (including the default Claude Code shell on Windows). No
-`Activate.ps1` dance, no venv-path tricks in callers.
-
-**Windows (PowerShell) / Linux / macOS:**
-
-```powershell
-# 1. bootstrap pipx if not yet installed (one-time per user)
+```bash
+# 1. bootstrap pipx (one-time per user)
 python -m pip install --user pipx
-python -m pipx ensurepath        # adds ~/.local/bin to PATH; restart shell after
+python -m pipx ensurepath     # adds ~/.local/bin to PATH; restart shell after
 
-# 2. install yt-tools editable — in-place edits in lib/yt-tools are picked up
-python -m pipx install --editable ~/projects/.common/lib/yt-tools
+# 2. install yt-tools (core)
+pipx install yt-tools
 ```
 
-This exposes `yt-transcript`, `yt-frames`, `yt-watch`, `yt-tools` (and a
-shimmed `yt-dlp`) in `~/.local/bin/`.
+Core install ships `yt-transcript`, `yt-frames`, `yt-listen`, `yt-watch`,
+`yt-tools` (and a shimmed `yt-dlp`) in `~/.local/bin/`. `yt-listen` works
+out of the box with `librosa`'s `beat_track` + Krumhansl-Schmuckler key
+estimation.
 
-**External binary still required:** `ffmpeg` — system-level, not pip-installable.
+### Full audio analysis (chord progression + structure)
 
-- Windows: `winget install Gyan.FFmpeg`
-- macOS: `brew install ffmpeg`
-- Linux (Debian/Ubuntu): `apt install ffmpeg`
-
-> **Windows-gotcha for ffmpeg.** `winget install Gyan.FFmpeg` writes
-> `ffmpeg.exe` into the per-user PATH, which the *current* shell session does
-> not re-read — including subshells inside a running Claude Code session.
-> Either restart the terminal/CC session, **or** prepend the install dir for
-> the current session: glob
-> `~/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_*/ffmpeg-*-full_build/bin/`
-> and add to `$env:PATH`. The `using-yt-tools` v0.3.0+ skill does this resolve
-> automatically as Step 0 of every flow.
-
-### Legacy / fallback install (without pipx)
-
-If pipx isn't viable (corporate-restricted Python, ancient stdlib, etc.),
-the old venv-method still works — the skill auto-resolves either install
-layout:
-
-```powershell
-cd ~/projects/.common/lib/yt-tools
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1     # or Linux/macOS: source .venv/bin/activate
-pip install -e .
+```bash
+pipx install "yt-tools[full]"
 ```
 
-Then either activate the venv per-shell, or invoke binaries via full path
-(`~/projects/.common/lib/yt-tools/.venv/{Scripts,bin}/yt-frames`). With this
-layout binaries are **not** on PATH automatically — the `using-yt-tools`
-v0.3.0+ skill falls back to the venv path when `Get-Command yt-frames` is
-empty.
+The `[full]` extra adds [`bpm-detector`](https://github.com/libraz/bpm-detector)
+via direct VCS reference (not yet on PyPI). With `[full]` installed,
+`yt-listen` outputs richer features per timestamp: chord progression,
+structural segments, refined BPM, and a confidence-scored key. Without it,
+`yt-listen` gracefully falls back to librosa-only basics (BPM + key are
+still produced).
 
-### Verify
+### ffmpeg (external binary, all installs)
 
-```powershell
-yt-transcript --help
-yt-frames --help
-yt-watch --help
-yt-tools cache --help
+`yt-tools` shells out to `ffmpeg` for source download caching and per-clip
+extraction. Install via your OS package manager:
+
+| OS | Command |
+|---|---|
+| Windows | `winget install Gyan.FFmpeg` |
+| macOS | `brew install ffmpeg` |
+| Linux (Debian/Ubuntu) | `sudo apt install ffmpeg` |
+| Linux (Fedora/RHEL) | `sudo dnf install ffmpeg` |
+
+> **Windows-gotcha.** `winget install Gyan.FFmpeg` writes `ffmpeg.exe` into
+> the per-user PATH, which the *current* shell session does not re-read.
+> Either restart the terminal, or prepend the install directory to `$env:PATH`
+> for the current session.
+
+### Use inside Claude Code (plugin)
+
+A Claude Code plugin is available — installing it auto-runs `pipx install yt-tools`
+and probes `ffmpeg` on session start, then activates the `using-yt-tools`
+skill that orchestrates the three primary flows for you:
+
+```
+/plugin marketplace add OpeItcLoc03/claude-plugins
+/plugin install yt-tools@opeitcloc03-claude-plugins
 ```
 
-## Usage
+The plugin marketplace and `yt-tools` repository live at
+[`OpeItcLoc03/claude-plugins`](https://github.com/OpeItcLoc03/claude-plugins)
+and [`OpeItcLoc03/yt-tools`](https://github.com/OpeItcLoc03/yt-tools).
 
-### Iterative agent flow
+## Quick start
 
-```powershell
-# 1) transcript first — agent reads the markdown
+The CLIs are designed for an **iterative** loop: cheap transcript first,
+then targeted heavy fetches only at the timestamps that mattered.
+
+### Flow 1 — transcript-driven frames
+
+```bash
+# 1) get the transcript; agent reads markdown and notes timestamps
 yt-transcript https://www.youtube.com/watch?v=dQw4w9WgXcQ
-# → C:\...\yt-cache\dQw4w9WgXcQ\transcript.md
+# → ./yt-cache/dQw4w9WgXcQ/transcript.md
 
-# 2) targeted frames from the timestamps the agent spotted in the transcript
+# 2) pull only the frames you actually need
 yt-frames https://www.youtube.com/watch?v=dQw4w9WgXcQ --timestamps 0:43,1:23,2:30
-# Wrote: C:\...\frame_0043.jpg
-# Wrote: C:\...\frame_0123.jpg
-# Wrote: C:\...\frame_0230.jpg
-
-# 3) agent calls its Read tool on each .jpg → visual answer
+# Wrote: ./yt-cache/dQw4w9WgXcQ/frames/frame_0043.jpg
+# Wrote: ./yt-cache/dQw4w9WgXcQ/frames/frame_0123.jpg
+# Wrote: ./yt-cache/dQw4w9WgXcQ/frames/frame_0230.jpg
 ```
 
-### Bulk-scene mode (secondary)
+### Flow 2 — audio FFT analysis at specific moments
 
-```powershell
+```bash
+# Per timestamp: clip.wav + spectrum.png + features.md (BPM, key, chord, MFCC, etc.)
+yt-listen https://www.youtube.com/watch?v=dQw4w9WgXcQ --timestamps 0:30 --duration 8s
+# Wrote: ./yt-cache/dQw4w9WgXcQ/audio/clip_0030.wav
+# Wrote: ./yt-cache/dQw4w9WgXcQ/audio/spectrum_0030.png
+# Wrote: ./yt-cache/dQw4w9WgXcQ/audio/features_0030.md
+```
+
+### Flow 3 — scene-driven bulk frames
+
+```bash
 yt-frames URL --mode scene --scene-threshold 27
-yt-watch URL                  # combined transcript + scene-frames in one .md
-```
-
-### Interval mode
-
-```powershell
-yt-frames URL --mode interval --interval 30s
+# Or combined transcript + scene-frames in one self-contained .md:
+yt-watch URL
 ```
 
 ### Cache hygiene
 
-```powershell
-yt-tools cache list
-yt-tools cache prune --older-than 7d
+```bash
+yt-tools cache list                      # show cached source-mp4 sizes
+yt-tools cache prune --older-than 7d     # drop sources older than a week
 ```
+
+## Output layout
+
+Per video, all artefacts land under `./yt-cache/<video-id>/` in the current
+working directory:
+
+```
+./yt-cache/<video-id>/
+  source.mp4               # cached source (≤720p, reused by yt-frames / yt-listen / yt-watch)
+  transcript.md            # yt-transcript output
+  watch.md                 # yt-watch output
+  frames/
+    frame_<mmss>.jpg       # yt-frames / yt-watch (zero-padded mmss)
+  audio/
+    clip_<mmss>.wav        # yt-listen per-timestamp clip
+    spectrum_<mmss>.png    # yt-listen mel-spectrogram
+    features_<mmss>.md     # yt-listen feature report (BPM / key / chord / MFCC / spectral stats)
+```
+
+The last line of stdout (or one line per artefact for multi-output commands
+like `yt-frames` and `yt-listen`) is the absolute path of the produced file,
+prefixed with `Wrote: `. This makes piping into agent tooling or shell
+scripts trivial.
 
 ## Defaults
 
-- **Artifacts:** `./yt-cache/<video-id>/` in cwd
-- **Combined embed (`yt-watch`):** sidecar `![](frames/frame_<mmss>.jpg)`, never base64
-- **Distill:** `--distill` only prints a hint to invoke `mcp__interns__transcript_distill` on the artefact; the CLI itself never calls an LLM
-- **Scene threshold:** 27 (PySceneDetect `ContentDetector` default; lower = more sensitive)
-- **Source caching:** on by default; `--no-cache-source` to stream
+- **Cache directory:** `./yt-cache/<video-id>/` in cwd (`.gitignore`-friendly).
+- **Source caching:** on by default (`--no-cache-source` to stream via
+  `yt-dlp -g | ffmpeg`).
+- **Combined embed (`yt-watch`):** sidecar `![](frames/frame_<mmss>.jpg)`,
+  never base64 (avoids ~33 % token bloat).
+- **Distill (`yt-transcript --distill`):** prints a hint to invoke an external
+  distillation step (`mcp__interns__transcript_distill` in Claude Code); the
+  CLI itself never calls an LLM.
+- **Scene threshold:** 27 (PySceneDetect `ContentDetector` default; lower =
+  more sensitive).
+- **`yt-listen` defaults:** 8-second clip per timestamp, mel-spectrogram at
+  default `librosa` settings, full feature set when `[full]` extra is
+  installed.
 
-## Tests
+## Requirements
 
-```powershell
-cd ~/projects/.common/lib/yt-tools
-python -m pytest tests/
+- Python ≥ 3.10, < 3.13 (`librosa` Py 3.13 friction holds the ceiling)
+- `ffmpeg` on PATH (external binary, see Installation)
+- `pipx` recommended for install (any pip-compatible installer works)
+
+## Design choices
+
+**No MCP wrapper.** Each CLI is a stateless one-shot transform: URL → artefact.
+There is no typed schema discovery, no shared cache across sessions, no
+persistent connection an MCP server would benefit from. `Bash` is the right
+caller.
+
+**No Whisper / Gemini for transcription.** `yt-transcript` uses YouTube's
+`auto-sub` via `youtube-transcript-api`. Whisper would add a massive runtime
+dep for a marginally cleaner transcript; the iterative flow tolerates auto-sub
+quality and benefits more from `--distill` on the markdown than from a heavier
+STT step.
+
+**Iterative > bulk.** The primary flow is "transcript first, then targeted
+heavy fetches". Scene-mode and interval-mode are secondary, opt-in via flags.
+
+## Development
+
+```bash
+git clone https://github.com/OpeItcLoc03/yt-tools.git
+cd yt-tools
+pip install -e ".[full,test]"
+pytest tests/
 ```
 
-74 tests cover the pure logic (video-id extraction, mm:ss conversions,
-snippets → markdown rendering with hybrid gap/duration/sentence segmentation,
-cache list/prune, interleaved `yt-watch` rendering, subprocess failure
-formatting) and CLI smoke (yt-transcript, yt-frames timestamps/interval modes,
-yt-tools cache). YouTube + yt-dlp + ffmpeg are mocked in the smoke layer — no
-network is touched. E2E on a real URL lives in the `claude-skills` repo
-(`using-yt-tools-test-trigger`).
+Test layer covers pure logic (video-id extraction, mm:ss conversions,
+snippets → markdown rendering, cache list/prune, interleaved rendering,
+subprocess failure formatting) and CLI smoke (transcript / frames / listen /
+watch end-to-end with mocked subprocess calls). YouTube + `yt-dlp` + `ffmpeg`
+are mocked at the smoke layer — no network is touched.
 
-## Why not MCP
+## License
 
-Stateless one-shot transforms (URL → artefact). Each CLI is a thin wrapper
-around `youtube-transcript-api` + `yt-dlp` + `ffmpeg` + `PySceneDetect`. No
-shared cache across sessions, no typed schema discovery the agent would
-benefit from, no persistent connection. `Bash` is the right caller. Add an
-MCP wrapper later only if cross-project video metadata caching becomes a
-real need.
-
-## Why not Whisper / Gemini for transcription
-
-We use YouTube's `auto-sub` via `youtube-transcript-api`. Whisper would add a
-massive runtime dep and produce a slightly cleaner transcript at the cost of
-seconds-to-minutes per video. The agent flow tolerates auto-sub quality and
-benefits more from `--distill` on the markdown (cheap intern LLM) than from a
-heavier STT step.
-
-## Design source
-
-`~/projects/.workshop/.archive/2026-05-20-yt-tools.md` — full design trace
-including GitHub research that justified building over reuse (existing MCP
-wrappers return raw `youtube-transcript-api` shape; `youtube-screenshot-extractor`
-requires Deno; combined-tools output JSON / wikis instead of one `.md`).
+MIT — see [LICENSE](LICENSE).
