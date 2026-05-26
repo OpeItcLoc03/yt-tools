@@ -133,6 +133,116 @@ class TestFormatFeaturesMarkdown:
         assert "Harmonic energy: 64%" in md
         assert "Percussive energy: 36%" in md
 
+    def test_high_conf_bpm_detector_no_cross_check_shown(self):
+        # bpm-detector key_confidence 0.91 >= threshold → cross-check suppressed
+        # even if provided.
+        md = listen_mod.format_features_markdown(
+            timestamp_seconds=30.0,
+            duration_seconds=30.0,
+            librosa_features=_fake_librosa_features(),
+            bpm_result=_fake_bpm_result(),
+            fallback_basic=None,
+            cross_check_key={
+                "key": "G# major", "confidence": 0.62,
+                "alt_key": "G# minor", "alt_confidence": 0.58,
+                "mode_delta": 0.04,
+            },
+        )
+        assert "A minor (confidence 0.91)" in md
+        assert "Krumhansl cross-check" not in md
+
+    def test_low_conf_bpm_detector_appends_cross_check(self):
+        # The NGGYU regression: bpm-detector says G# Minor 0.40, our Krumhansl
+        # cross-check has narrow mode_delta → render combined "X / Y (low discrimination)".
+        bpm = {
+            "basic_info": {"bpm": 113.5, "bpm_confidence": 1.00,
+                           "key": "G# Minor", "key_confidence": 0.40},
+            "chord_progression": {"main_progression": ["G#", "D#", "G#"]},
+            "structure": {"sections": []},
+        }
+        cross = {
+            "key": "G# major", "confidence": 0.78,
+            "alt_key": "G# minor", "alt_confidence": 0.76,
+            "mode_delta": 0.02,
+        }
+        md = listen_mod.format_features_markdown(
+            timestamp_seconds=30.0,
+            duration_seconds=30.0,
+            librosa_features=_fake_librosa_features(),
+            bpm_result=bpm,
+            fallback_basic=None,
+            cross_check_key=cross,
+        )
+        # Primary call still shown.
+        assert "G# Minor (confidence 0.40)" in md
+        # Cross-check rendered with both candidates because mode_delta < 0.05.
+        assert "Krumhansl cross-check" in md
+        assert "G# major / G# minor" in md
+        assert "low discrimination" in md
+
+    def test_low_conf_bpm_detector_cross_check_high_discrimination(self):
+        # bpm-detector low conf, but Krumhansl is confident → show its single call.
+        bpm = {
+            "basic_info": {"bpm": 113.5, "bpm_confidence": 1.00,
+                           "key": "G# Minor", "key_confidence": 0.40},
+        }
+        cross = {
+            "key": "A♭ major", "confidence": 0.85,
+            "alt_key": "A♭ minor", "alt_confidence": 0.55,
+            "mode_delta": 0.30,
+        }
+        md = listen_mod.format_features_markdown(
+            timestamp_seconds=30.0,
+            duration_seconds=30.0,
+            librosa_features=_fake_librosa_features(),
+            bpm_result=bpm,
+            fallback_basic=None,
+            cross_check_key=cross,
+        )
+        assert "G# Minor (confidence 0.40)" in md
+        assert "Krumhansl cross-check: A♭ major (cosine 0.85)" in md
+        # No combined rendering when delta is healthy.
+        assert "low discrimination" not in md
+
+    def test_fallback_only_low_discrimination_shows_alt(self):
+        # No bpm-detector. Fallback's own mode_delta is narrow → render alt too.
+        fallback = {
+            "tempo_bpm": 120.0,
+            "tempo_confidence": None,
+            "key": "G# minor",
+            "key_confidence": 0.65,
+            "alt_key": "G# major",
+            "alt_confidence": 0.63,
+            "mode_delta": 0.02,
+        }
+        md = listen_mod.format_features_markdown(
+            timestamp_seconds=30.0,
+            duration_seconds=30.0,
+            librosa_features=_fake_librosa_features(),
+            bpm_result=None,
+            fallback_basic=fallback,
+        )
+        assert "G# minor (cosine 0.65, librosa fallback)" in md
+        assert "alt G# major" in md
+        assert "low discrimination" in md
+
+    def test_fallback_without_alt_fields_backcompat(self):
+        # Fallback dict without alt_key/mode_delta keys still renders cleanly.
+        fallback = {
+            "tempo_bpm": 120.0,
+            "tempo_confidence": None,
+            "key": "C major",
+            "key_confidence": 0.85,
+        }
+        md = listen_mod.format_features_markdown(
+            timestamp_seconds=30.0,
+            duration_seconds=30.0,
+            librosa_features=_fake_librosa_features(),
+            bpm_result=None,
+            fallback_basic=fallback,
+        )
+        assert "C major (cosine 0.85, librosa fallback)" in md
+
     def test_required_sections_present_with_fallback(self):
         # Sections still rendered even when bpm_detector dep is unavailable.
         md = listen_mod.format_features_markdown(
@@ -153,6 +263,99 @@ class TestFormatFeaturesMarkdown:
         assert "C major" in md
         # n/a markers for absent bpm-detector sections
         assert "_n/a" in md  # at least once for chord progression and structure
+
+
+class TestEstimateKeyFromChroma:
+    """Krumhansl-Schmuckler key estimation on synthetic chroma vectors.
+
+    Sharp-only naming convention — ``A♭ Major`` is reported as ``G# major``.
+    Enharmonic equivalents are the same pitch class, so the test asserts on
+    the sharp spelling.
+    """
+
+    def _chroma_for(self, indices_with_weights: dict[int, float], floor: float = 0.0) -> list[float]:
+        """Build a 12-element chroma vector. ``floor`` adds uniform noise to non-listed bins."""
+        v = [floor] * 12
+        for i, w in indices_with_weights.items():
+            v[i] = w
+        return v
+
+    def test_pure_c_major_triad(self):
+        # C(0), E(4), G(7) — canonical C major.
+        chroma = self._chroma_for({0: 1.0, 4: 1.0, 7: 1.0})
+        result = listen_mod.estimate_key_from_chroma(chroma)
+        assert result["key"] == "C major"
+        assert result["confidence"] > 0.5
+        # Same-tonic alternative is C minor.
+        assert result["alt_key"] == "C minor"
+        assert result["mode_delta"] > 0.0  # major wins by some margin
+
+    def test_pure_a_minor_triad(self):
+        # A(9), C(0), E(4) — canonical A minor (relative minor of C major).
+        chroma = self._chroma_for({9: 1.0, 0: 1.0, 4: 1.0})
+        result = listen_mod.estimate_key_from_chroma(chroma)
+        assert result["key"] == "A minor"
+        assert result["confidence"] > 0.5
+        assert result["alt_key"] == "A major"
+
+    def test_pure_a_flat_major_triad_picks_major(self):
+        # A♭(8), C(0), E♭(3) — A♭ Major triad. Detector reports as 'G# major' (sharp spelling).
+        # Must NOT collapse to 'G# minor' (the enharmonic-equivalent relative-minor confusion).
+        chroma = self._chroma_for({8: 1.0, 0: 1.0, 3: 1.0})
+        result = listen_mod.estimate_key_from_chroma(chroma)
+        assert result["key"] == "G# major"
+        assert result["alt_key"] == "G# minor"
+        assert result["mode_delta"] > 0.0
+
+    def test_nggyu_chord_progression_shape_prefers_major(self):
+        # Approximates "Never Gonna Give You Up" (true key: A♭ Major,
+        # chord vocab A♭ → E♭ → Fm → D♭).
+        # Aggregate pitch-class mass from those chords:
+        #   A♭(8) in 3 chords → 1.0
+        #   C(0)  in 2 chords → 0.7
+        #   E♭(3) in 2 chords → 0.7
+        #   F(5)  in 2 chords → 0.7  (M6 of A♭ Major — diatonic; NOT diatonic to G♯ Minor)
+        #   D♭(1) in 1 chord  → 0.4
+        #   G(7)  in 1 chord  → 0.4
+        #   B♭(10) in 1 chord → 0.4
+        # Other bins low noise.
+        chroma = self._chroma_for(
+            {8: 1.0, 0: 0.7, 3: 0.7, 5: 0.7, 1: 0.4, 7: 0.4, 10: 0.4},
+            floor=0.05,
+        )
+        result = listen_mod.estimate_key_from_chroma(chroma)
+        # Tonic is G#/A♭ either way — confirm the detector at least pins the tonic.
+        assert result["key"].startswith("G#"), f"tonic should be G# (= A♭), got {result['key']!r}"
+        # Acceptance: either picks Major outright, OR flags low discrimination
+        # (mode_delta < 0.05) — both are acceptable per task spec option (1).
+        # Hard-fail on confidently picking minor: that's the bug.
+        if result["key"] == "G# minor":
+            assert result["mode_delta"] < 0.05, (
+                f"detector picked G# minor with mode_delta={result['mode_delta']:.4f} — "
+                "must either pick G# major or flag low discrimination (delta<0.05)"
+            )
+
+    def test_zero_chroma_returns_zero_confidence(self):
+        chroma = [0.0] * 12
+        result = listen_mod.estimate_key_from_chroma(chroma)
+        assert result["confidence"] == 0.0
+
+    def test_rejects_wrong_shape(self):
+        with pytest.raises(ValueError, match=r"12 elements"):
+            listen_mod.estimate_key_from_chroma([0.0] * 11)
+
+    def test_accepts_numpy_array_input(self):
+        import numpy as np
+        chroma = np.zeros(12)
+        chroma[0] = chroma[4] = chroma[7] = 1.0
+        result = listen_mod.estimate_key_from_chroma(chroma)
+        assert result["key"] == "C major"
+
+    def test_mode_delta_sign_matches_best_minus_alt(self):
+        # Pure C major: best is C major, alt is C minor. mode_delta = best - alt > 0.
+        chroma = self._chroma_for({0: 1.0, 4: 1.0, 7: 1.0})
+        result = listen_mod.estimate_key_from_chroma(chroma)
+        assert result["mode_delta"] == pytest.approx(result["confidence"] - result["alt_confidence"])
 
 
 class TestFormatHelpers:

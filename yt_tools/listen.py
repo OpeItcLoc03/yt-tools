@@ -237,22 +237,30 @@ def _librosa_features(y: Any, sr: int) -> dict[str, Any]:
     }
 
 
-def _librosa_fallback_basic(y: Any, sr: int) -> dict[str, Any]:
-    """Compute tempo + naive key when bpm_detector is unavailable.
+# Krumhansl-Kessler probe-tone profiles (1982). Index 0 = tonic (C).
+# Major peaks at scale degrees 1, 3, 5 (indices 0, 4, 7).
+# Minor peaks at scale degrees 1, ♭3, 5 (indices 0, 3, 7).
+_KK_MAJOR_PROFILE = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
+_KK_MINOR_PROFILE = (6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
 
-    Krumhansl-Schmuckler-flavoured key estimation: cosine-distance between mean
-    chroma and a major/minor template, take the best of the 24 rotations.
+
+def estimate_key_from_chroma(chroma_mean: Any) -> dict[str, Any]:
+    """Estimate musical key from a 12-element mean-chroma vector.
+
+    Returns ``{"key": "<root> <mode>", "confidence": float, "alt_key": ...,
+    "alt_confidence": ..., "mode_delta": float}`` where ``alt_*`` describe the
+    same-tonic candidate in the *other* mode and ``mode_delta`` =
+    ``confidence`` − ``alt_confidence``. Callers may surface both candidates
+    when ``mode_delta`` is small.
     """
-    import librosa
     import numpy as np
 
-    tempo_arr, _ = librosa.beat.beat_track(y=y, sr=sr)
-    tempo = float(np.atleast_1d(tempo_arr)[0])
+    chroma = np.asarray(chroma_mean, dtype=float).reshape(-1)
+    if chroma.shape != (12,):
+        raise ValueError(f"chroma_mean must have 12 elements, got shape {chroma.shape}")
 
-    chroma = librosa.feature.chroma_cqt(y=y, sr=sr).mean(axis=1)
-    # Krumhansl-Kessler key profiles (normalised).
-    major = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
-    minor = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+    major = np.array(_KK_MAJOR_PROFILE)
+    minor = np.array(_KK_MINOR_PROFILE)
 
     def _cosine(a: Any, b: Any) -> float:
         na = float(np.linalg.norm(a))
@@ -261,15 +269,51 @@ def _librosa_fallback_basic(y: Any, sr: int) -> dict[str, Any]:
             return 0.0
         return float(np.dot(a, b) / (na * nb))
 
-    best = ("?", 0.0)
+    scores: dict[tuple[int, str], float] = {}
     for i in range(12):
-        for mode, profile in (("maj", major), ("min", minor)):
-            sim = _cosine(chroma, np.roll(profile, i))
-            if sim > best[1]:
-                root = _PITCH_NAMES[i]
-                label = f"{root} major" if mode == "maj" else f"{root} minor"
-                best = (label, sim)
-    return {"tempo_bpm": tempo, "tempo_confidence": None, "key": best[0], "key_confidence": best[1]}
+        scores[(i, "maj")] = _cosine(chroma, np.roll(major, i))
+        scores[(i, "min")] = _cosine(chroma, np.roll(minor, i))
+
+    (best_i, best_mode), best_score = max(scores.items(), key=lambda kv: kv[1])
+    alt_mode = "min" if best_mode == "maj" else "maj"
+    alt_score = scores[(best_i, alt_mode)]
+
+    root = _PITCH_NAMES[best_i]
+    label = f"{root} major" if best_mode == "maj" else f"{root} minor"
+    alt_label = f"{root} major" if alt_mode == "maj" else f"{root} minor"
+
+    return {
+        "key": label,
+        "confidence": max(best_score, 0.0),
+        "alt_key": alt_label,
+        "alt_confidence": max(alt_score, 0.0),
+        "mode_delta": best_score - alt_score,
+    }
+
+
+def _librosa_fallback_basic(y: Any, sr: int) -> dict[str, Any]:
+    """Compute tempo + key from raw audio when bpm_detector is unavailable.
+
+    Wraps :func:`estimate_key_from_chroma` — the key-matching math lives
+    there so it can be unit-tested without librosa.
+    """
+    import librosa
+    import numpy as np
+
+    tempo_arr, _ = librosa.beat.beat_track(y=y, sr=sr)
+    tempo = float(np.atleast_1d(tempo_arr)[0])
+
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr).mean(axis=1)
+    est = estimate_key_from_chroma(chroma)
+    return {
+        "tempo_bpm": tempo,
+        "tempo_confidence": None,
+        "key": est["key"],
+        "key_confidence": est["confidence"],
+        "alt_key": est["alt_key"],
+        "alt_confidence": est["alt_confidence"],
+        "mode_delta": est["mode_delta"],
+    }
 
 
 def _bpm_detector_analyse(wav_path: Path, sample_rate: int) -> dict[str, Any] | None:
@@ -428,6 +472,62 @@ def _format_structure(bpm_result: dict[str, Any] | None) -> str | None:
     return "\n".join(lines) if lines else None
 
 
+# Threshold below which the primary detector's mode call is no longer trusted
+# on its own — cross-check with Krumhansl-Schmuckler fallback is surfaced.
+_LOW_CONF_KEY_THRESHOLD = 0.5
+# Mode-discrimination margin below which Krumhansl considers the call ambiguous.
+_LOW_DISCRIMINATION_DELTA = 0.05
+
+
+def _format_key_field(
+    *,
+    bpm_result: dict[str, Any] | None,
+    fallback_basic: dict[str, Any] | None,
+    cross_check: dict[str, Any] | None,
+) -> str:
+    """Render the ``Key:`` line, augmenting with a Krumhansl cross-check when the
+    primary detector confidence is low.
+
+    Decision tree:
+      1. bpm-detector path with key_confidence ≥ 0.5 → trust, render as before.
+      2. bpm-detector path with key_confidence < 0.5 → render primary call AND
+         append " — Krumhansl cross-check: <X>" if ``cross_check`` is provided.
+         When the cross-check itself shows mode_delta < 0.05, render its alt
+         mode too as "X major / X minor (low discrimination)".
+      3. Fallback-only path (no bpm-detector) → render the fallback call;
+         when its mode_delta < 0.05 also show the alt mode.
+      4. Nothing available → "n/a".
+    """
+    if bpm_result and isinstance(bpm_result.get("basic_info"), dict):
+        basic = bpm_result["basic_info"]
+        key = basic.get("key")
+        key_conf = basic.get("key_confidence")
+        primary = str(key) if key else "n/a"
+        if key_conf is not None:
+            conf01 = _normalise_confidence(key_conf)
+            primary += f" (confidence {conf01:.2f})"
+            if conf01 < _LOW_CONF_KEY_THRESHOLD and cross_check is not None:
+                cc_key = cross_check["key"]
+                cc_delta = cross_check["mode_delta"]
+                if cc_delta < _LOW_DISCRIMINATION_DELTA:
+                    cc_alt = cross_check["alt_key"]
+                    primary += f" — Krumhansl cross-check: {cc_key} / {cc_alt} (low discrimination, mode_delta {cc_delta:.3f})"
+                else:
+                    primary += f" — Krumhansl cross-check: {cc_key} (cosine {cross_check['confidence']:.2f})"
+        return primary
+
+    if fallback_basic:
+        base = f"{fallback_basic['key']} (cosine {fallback_basic['key_confidence']:.2f}, librosa fallback)"
+        delta = fallback_basic.get("mode_delta")
+        if delta is not None and delta < _LOW_DISCRIMINATION_DELTA:
+            alt = fallback_basic.get("alt_key")
+            if alt:
+                base += f" — alt {alt} (low discrimination, mode_delta {delta:.3f})"
+        return base
+
+    return "n/a"
+
+
 def format_features_markdown(
     *,
     timestamp_seconds: float,
@@ -435,30 +535,35 @@ def format_features_markdown(
     librosa_features: dict[str, Any],
     bpm_result: dict[str, Any] | None,
     fallback_basic: dict[str, Any] | None,
+    cross_check_key: dict[str, Any] | None = None,
 ) -> str:
-    """Compose ``features_TTTT.md`` content. All required sections present (NA where missing)."""
+    """Compose ``features_TTTT.md`` content. All required sections present (NA where missing).
+
+    ``cross_check_key`` — optional Krumhansl-Schmuckler estimate from the same
+    chroma vector, used to augment the bpm-detector key call when its
+    confidence is low. Shape: ``{"key", "confidence", "alt_key", "alt_confidence", "mode_delta"}``.
+    """
     mmss = format_seconds_to_mmss(timestamp_seconds)
     lines: list[str] = [f"# Audio features @ {mmss} (duration {duration_seconds:.0f}s)", ""]
 
-    # Tempo + key
+    # Tempo
     if bpm_result and isinstance(bpm_result.get("basic_info"), dict):
         basic = bpm_result["basic_info"]
         tempo = basic.get("bpm")
         tempo_conf = basic.get("bpm_confidence") or basic.get("confidence")
-        key = basic.get("key")
-        key_conf = basic.get("key_confidence")
         tempo_str = f"{float(tempo):.1f} BPM" if tempo is not None else "n/a"
         if tempo_conf is not None:
             tempo_str += f" (confidence {_normalise_confidence(tempo_conf):.2f})"
-        key_str = str(key) if key else "n/a"
-        if key_conf is not None:
-            key_str += f" (confidence {_normalise_confidence(key_conf):.2f})"
     elif fallback_basic:
         tempo_str = f"{fallback_basic['tempo_bpm']:.1f} BPM (librosa beat-track, no confidence)"
-        key_str = f"{fallback_basic['key']} (cosine {fallback_basic['key_confidence']:.2f}, librosa fallback)"
     else:
         tempo_str = "n/a"
-        key_str = "n/a"
+
+    key_str = _format_key_field(
+        bpm_result=bpm_result,
+        fallback_basic=fallback_basic,
+        cross_check=cross_check_key,
+    )
     lines += [
         "## Tempo + key",
         f"- **Tempo:** {tempo_str}",
@@ -580,6 +685,15 @@ def run(
         bpm_result = _bpm_detector_analyse(wav_path, sample_rate)
         fallback = _librosa_fallback_basic(y, sr) if bpm_result is None else None
 
+        # When bpm-detector is the primary source but its key call is uncertain,
+        # run a cheap Krumhansl-Schmuckler estimate on the chroma we already
+        # computed and surface it as a cross-check (see format_features_markdown).
+        cross_check: dict[str, Any] | None = None
+        if bpm_result is not None and isinstance(bpm_result.get("basic_info"), dict):
+            bd_conf = bpm_result["basic_info"].get("key_confidence")
+            if bd_conf is not None and _normalise_confidence(bd_conf) < _LOW_CONF_KEY_THRESHOLD:
+                cross_check = estimate_key_from_chroma(feats["chroma_mean"])
+
         # Spectrogram (mel or linear).
         if not no_spectrogram:
             _render_spectrogram(y, sr, spec_path, linear=linear)
@@ -595,6 +709,7 @@ def run(
             librosa_features=feats,
             bpm_result=bpm_result,
             fallback_basic=fallback,
+            cross_check_key=cross_check,
         )
         md_path.write_text(md, encoding="utf-8")
 
