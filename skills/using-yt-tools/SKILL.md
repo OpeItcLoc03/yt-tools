@@ -1,7 +1,7 @@
 ---
 name: using-yt-tools
-version: 0.3.2
-description: Three flows for YouTube content. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. Triggers (mixed RU/EN — same skill serves both audiences) — "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", or any youtube.com URL. CLI installed via the bundled SessionStart hook which runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` from the plugin's local clone (PyPI release deferred post-v1). YouTube-only — for Vimeo / Twitch / local files use other tools.
+version: 0.4.0
+description: Five flows for YouTube content. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. **Metadata** (`yt-meta`, free — rides the same yt-dlp call) — description, chapters, most-replayed heatmap, view/like/comment counts, tags, subtitle languages as markdown. **Comments** (`yt-comments`, separate paginated scrape) — top comments + nested replies; capped top-50 by default, costly on viral videos, only on explicit request. Triggers (mixed RU/EN — same skill serves both audiences) — "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", "video description", "show chapters", "most replayed", "video stats", "что в описании", "покажи главы", "самые пересматриваемые", "top comments", "what are people saying", "комменты под роликом", "топ комментариев", or any youtube.com URL. CLI installed via the bundled SessionStart hook which runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` from the plugin's local clone (PyPI release deferred post-v1). YouTube-only — for Vimeo / Twitch / local files use other tools.
 ---
 
 # using-yt-tools
@@ -16,7 +16,7 @@ spectrum) via `yt-listen`.
 
 ## When to use
 
-Three distinct flows, picked by user intent:
+Five distinct flows, picked by user intent:
 
 **Flow A — iterative-watch** (exploration / summary):
 
@@ -49,7 +49,37 @@ Three distinct flows, picked by user intent:
 - If the video has captions, `yt-transcript` is optional context — but
   **not** for lyrics-from-music (see What NOT to do).
 
-All three flows assume the `yt-tools` CLI is installed. When this skill
+**Flow D — metadata** (`yt-meta`, zero added cost):
+
+- The user asks about the description, chapters, the most-replayed parts,
+  view/like/comment counts, tags, or which subtitle languages exist.
+- Steps: `yt-meta URL` → read `meta.md` → answer. Chapter and most-replayed
+  anchors are `[mm:ss]`, so they feed straight into Flow B/C if the user
+  then wants frames or audio at those points.
+- Free: reuses the same `yt-dlp --dump-json` the transcript path already
+  runs — no extra download, no ffmpeg.
+- Trigger phrases: "video description", "show chapters", "what are the
+  chapters", "most replayed", "video stats", "how many views/likes", «что в
+  описании», «покажи главы», «какие главы», «самые пересматриваемые
+  моменты», «статистика ролика», «сколько просмотров».
+
+**Flow E — comments** (`yt-comments`, separate paginated scrape):
+
+- The user explicitly wants the comments — top comments, replies, what
+  people are saying.
+- Steps: `yt-comments URL [--max N] [--sort new]` → read `comments.md` →
+  answer.
+- **Cost — read this before invoking.** Comments are **not** in the
+  metadata dump; they are a separate paginated scrape that can take minutes
+  on viral videos. Capped at the **top 50 by default**; raise only with
+  `--max` when the user actually needs more. Invoke this flow **only on an
+  explicit comments request** — never as part of Flow D, never "while we're
+  at it".
+- Trigger phrases: "top comments", "what are people saying", "comments
+  under the video", "read the comments", «комменты под роликом», «топ
+  комментариев», «что пишут в комментах», «почитай комментарии».
+
+All five flows assume the `yt-tools` CLI is installed. When this skill
 ships as part of the `yt-tools` Claude Code plugin, the `SessionStart`
 hook runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` automatically
 on the first session after plugin install (installs from the plugin's
@@ -102,9 +132,9 @@ resolve through a fallback path, use PATH-prepend on each invocation (see
 Invoke pattern below). Abort **only** if the binary is not on PATH and
 not in any of the known install locations.
 
-**yt-tools CLI** (any single location gives all five binaries —
-`yt-frames`, `yt-transcript`, `yt-listen`, `yt-watch`, `yt-tools` — plus
-a shimmed `yt-dlp`):
+**yt-tools CLI** (any single location gives all seven binaries —
+`yt-frames`, `yt-transcript`, `yt-meta`, `yt-comments`, `yt-listen`,
+`yt-watch`, `yt-tools` — plus a shimmed `yt-dlp`):
 
 1. **PATH**: `Get-Command yt-frames` (pwsh) / `command -v yt-frames`
    (bash). For Flow C also probe `yt-listen` (present from pyproject
@@ -181,9 +211,13 @@ prepend is needed — invoke normally.
 | A — iterative-watch | YouTube URL or bare 11-char video id | `--lang ru,en` for non-English subs; `--out PATH` |
 | B — targeted-frames | YouTube URL + timestamps (`mm:ss`, `h:mm:ss`, or bare seconds: `123` → 2:03) | `--no-cache-source` (stream instead of caching `source.mp4`); `--out DIR` |
 | C — audio-analysis | YouTube URL + timestamps (same formats as B) | `--duration 30s` (default 30s — the lower bound for beat-tracking); `--mode interval --interval 60s` (bulk sampling); `--no-wav` / `--no-spectrogram` (both default ON); `--linear` (STFT instead of mel); `--chroma` (bonus chromagram PNG); `--sample-rate 22050`; `--no-cache-source`; `--out DIR` |
+| D — metadata | YouTube URL or bare 11-char video id | `--out PATH` |
+| E — comments | YouTube URL or bare 11-char video id | `--max N` (default 50; higher = slower); `--sort {top,new}` (default top); `--out PATH` |
 
-All three flows write to `<cwd>/yt-cache/<video-id>/` by default (Flow C
-into the `audio/` sub-directory).
+All five flows write to `<cwd>/yt-cache/<video-id>/` by default (Flow C
+into the `audio/` sub-directory). Flows D and E need only the `yt-meta` /
+`yt-comments` binary plus the shimmed `yt-dlp` (same pipx venv) — **no
+ffmpeg**, no `source.mp4` download.
 
 ## Steps
 
@@ -244,6 +278,33 @@ beat-tracking); `--duration` overrides it. For bulk-sampling a musical
 video, use `--mode interval --interval 60s` instead of explicit
 timestamps.
 
+### Flow D — metadata
+
+```
+0. Resolve yt-meta per Prerequisites → Locating binaries; build PATH-prepend ($YTBIN only — no ffmpeg) if resolved via fallback
+1. yt-meta <url>                              → ./yt-cache/<vid>/meta.md
+2. Read meta.md
+3. Answer; if chapters / most-replayed anchors are relevant, offer Flow B/C at those [mm:ss]
+```
+
+Single stdout line: the bare absolute path of `meta.md`. Warnings/errors to
+stderr. Free — no `source.mp4`, no ffmpeg; only the `yt-dlp --dump-json`
+the engine already runs.
+
+### Flow E — comments
+
+```
+0. Resolve yt-comments per Prerequisites → Locating binaries; build PATH-prepend ($YTBIN only — no ffmpeg) if resolved via fallback
+1. yt-comments <url> [--max N] [--sort new]   → ./yt-cache/<vid>/comments.md   (top 50 by default)
+2. Read comments.md
+3. Answer, citing authors / like-counts; replies are nested as blockquotes under their parent
+```
+
+Single stdout line: the bare absolute path of `comments.md`. **Costly** —
+a separate paginated scrape (minutes on viral videos), so the fetch is
+capped at top 50 unless the user asked for more via `--max`. Only run this
+flow on an explicit comments request (see What NOT to do).
+
 ## Failure modes
 
 All failures abort cleanly; never leave a half-finished state.
@@ -262,11 +323,14 @@ All failures abort cleanly; never leave a half-finished state.
 
 - Writes under `<cwd>/yt-cache/<video-id>/`:
   - `transcript.md` (Flow A)
-  - `source.mp4` (≤ 720p; produced by either flow unless `--no-cache-source`)
+  - `meta.md` (Flow D)
+  - `comments.md` (Flow E)
+  - `source.mp4` (≤ 720p; produced by Flows A/B/C unless `--no-cache-source`; **not** by D/E)
   - `frames/frame_<mmss>.jpg` per extracted frame
   - `audio/{clip,spectrum,features}_<mmss>.{wav,png,md}` (Flow C)
 - Network: `yt-dlp` pulls metadata + optionally `source.mp4`;
-  `youtube-transcript-api` pulls subs.
+  `youtube-transcript-api` pulls subs; Flow E additionally paginates the
+  comment feed (the one heavy network path — minutes on viral videos).
 - No external state is mutated — pure local-fs side effects.
 - `source.mp4` may be ~50–200 MB per 720p / 10-minute video; the cache is
   reused between calls. **Warning** — it accumulates: 20 videos ≈ 1–4 GB
@@ -292,6 +356,11 @@ Cache hygiene: `yt-tools cache list` shows usage, `yt-tools cache prune
 - **Don't bulk-extract "just in case".** Flow A takes frames from the
   transcript, Flow B from explicit user input. Never `--mode interval
   --interval 5s` "to be safe".
+- **Don't run `yt-comments` unless the user explicitly asked for comments.**
+  It is the one costly flow — a paginated scrape, minutes on viral videos —
+  and is **not** part of the metadata flow. "What's this video about" → Flow
+  A/D, never E. And don't raise `--max` past the default 50 on your own; more
+  comments = proportionally slower, so only when the user asks for depth.
 - **Don't use `yt-watch` as the default Flow A renderer.** `yt-watch`
   combines transcript + scene-frames into a single document — heavier
   (requires an ffmpeg scene-detect pass over `source.mp4`). Use it only
