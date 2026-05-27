@@ -23,6 +23,14 @@ from yt_tools.core import cache_dir_for, format_seconds_to_mmss, force_utf8_stre
 _MOST_REPLAYED_LIMIT = 5
 
 
+def _fmt_count(value) -> str | None:
+    """Comma-group an integer count. Returns None for missing or non-numeric input."""
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return None
+
+
 def _format_upload_date(raw: str | None) -> str | None:
     """``"20240115"`` → ``"2024-01-15"``. Returns None for missing/malformed input."""
     if not raw or len(raw) != 8 or not raw.isdigit():
@@ -98,16 +106,17 @@ def metadata_to_markdown(info: dict) -> str:
     if heatmap:
         lines += _most_replayed_section(heatmap)
 
-    # Stats — only emit rows that exist.
+    # Stats — only emit rows whose count is present and numeric.
     stat_rows: list[str] = []
-    if info.get("view_count") is not None:
-        stat_rows.append(f"- Views: {int(info['view_count']):,}")
-    if info.get("like_count") is not None:
-        stat_rows.append(f"- Likes: {int(info['like_count']):,}")
-    if info.get("comment_count") is not None:
-        stat_rows.append(f"- Comments: {int(info['comment_count']):,}")
-    if info.get("channel_follower_count") is not None:
-        stat_rows.append(f"- Subscribers: {int(info['channel_follower_count']):,}")
+    for label, key in (
+        ("Views", "view_count"),
+        ("Likes", "like_count"),
+        ("Comments", "comment_count"),
+        ("Subscribers", "channel_follower_count"),
+    ):
+        formatted = _fmt_count(info.get(key))
+        if formatted is not None:
+            stat_rows.append(f"- {label}: {formatted}")
     upload = _format_upload_date(info.get("upload_date"))
     if upload:
         stat_rows.append(f"- Uploaded: {upload}")

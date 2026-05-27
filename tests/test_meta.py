@@ -98,8 +98,8 @@ def test_render_full_includes_all_sections():
     assert "[2:34] Attention" in md
     # heatmap most-replayed: highest-value segment first, [mm:ss]–[mm:ss]
     assert "[1:23]" in md and "[1:30]" in md
-    # counts
-    assert "1234567" in md or "1,234,567" in md
+    # counts (comma-grouped)
+    assert "1,234,567" in md
     assert "2024-01-15" in md  # upload_date reformatted
     # taxonomy
     assert "transformers" in md

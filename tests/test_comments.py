@@ -116,8 +116,8 @@ def test_render_reply_after_its_parent():
 
 def test_render_counts_shown_fetched():
     md = comments_to_markdown(_PAYLOAD)
-    # 3 fetched comments (2 top-level + 1 reply)
-    assert "3" in md
+    # 3 fetched comments (2 top-level + 1 reply) — pin the actual counter line
+    assert "**Fetched:** 3" in md
 
 
 def test_render_no_comments_is_graceful():
