@@ -4,11 +4,14 @@ CLI suite for **iterative agent-driven YouTube watching**. The agent reads the
 transcript, decides which moments matter, then pulls only those frames or
 audio FFT slices — no bulk download, no JSON soup, no MCP scaffolding.
 
-Four CLIs, one cache, stdout-friendly absolute paths so the caller never has
+Five CLIs, one cache, stdout-friendly absolute paths so the caller never has
 to guess where the artefact landed:
 
 - `yt-transcript` — clean markdown transcript with metadata header and
   `[mm:ss]` paragraph anchors copy-paste-friendly for `--timestamps`.
+- `yt-meta` — full metadata as markdown: description, chapters (`[mm:ss]`
+  anchors), most-replayed heatmap, view/like/comment counts, tags, subtitle
+  languages. Zero added cost — reuses the same `yt-dlp --dump-json` call.
 - `yt-frames` — targeted frame extraction by timestamp, scene-detect, or
   fixed interval.
 - `yt-listen` — FFT audio analysis: per-timestamp clip + mel-spectrogram PNG +
@@ -32,8 +35,8 @@ use in any environment). PyPI distribution is deferred to a future release.
 
 The plugin's `SessionStart` hook runs
 `pipx install --force "$CLAUDE_PLUGIN_ROOT"` on the first session after
-install, exposing `yt-transcript`, `yt-frames`, `yt-listen`, `yt-watch`,
-`yt-tools` (and a shimmed `yt-dlp`) in `~/.local/bin/`. The bundled
+install, exposing `yt-transcript`, `yt-meta`, `yt-frames`, `yt-listen`,
+`yt-watch`, `yt-tools` (and a shimmed `yt-dlp`) in `~/.local/bin/`. The bundled
 `using-yt-tools` skill orchestrates the three primary flows (iterative
 watch / targeted frames / audio analysis) for the agent.
 
@@ -115,7 +118,19 @@ yt-frames https://www.youtube.com/watch?v=dQw4w9WgXcQ --timestamps 0:43,1:23,2:3
 # Wrote: ./yt-cache/dQw4w9WgXcQ/frames/frame_0230.jpg
 ```
 
-### Flow 2 — audio FFT analysis at specific moments
+### Flow 2 — video metadata
+
+```bash
+# Description, chapters, most-replayed, counts, tags — one markdown file.
+# Free: same yt-dlp --dump-json the transcript path already runs.
+yt-meta https://www.youtube.com/watch?v=dQw4w9WgXcQ
+# → ./yt-cache/dQw4w9WgXcQ/meta.md
+```
+
+The chapter and most-replayed anchors are `[mm:ss]`, so they paste straight
+into `yt-frames --timestamps` / `yt-listen --timestamps`.
+
+### Flow 3 — audio FFT analysis at specific moments
 
 ```bash
 # Per timestamp: clip.wav + spectrum.png + features.md (BPM, key, chord, MFCC, etc.)
@@ -125,7 +140,7 @@ yt-listen https://www.youtube.com/watch?v=dQw4w9WgXcQ --timestamps 0:30 --durati
 # Wrote: ./yt-cache/dQw4w9WgXcQ/audio/features_0030.md
 ```
 
-### Flow 3 — scene-driven bulk frames
+### Flow 4 — scene-driven bulk frames
 
 ```bash
 yt-frames URL --mode scene --scene-threshold 27
@@ -149,6 +164,7 @@ working directory:
 ./yt-cache/<video-id>/
   source.mp4               # cached source (≤720p, reused by yt-frames / yt-listen / yt-watch)
   transcript.md            # yt-transcript output
+  meta.md                  # yt-meta output
   watch.md                 # yt-watch output
   frames/
     frame_<mmss>.jpg       # yt-frames / yt-watch (zero-padded mmss)

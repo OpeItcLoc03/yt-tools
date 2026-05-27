@@ -12,11 +12,16 @@ class MetadataError(RuntimeError):
     pass
 
 
-def fetch_video_metadata(url: str, yt_dlp_bin: str = "yt-dlp") -> dict[str, Any]:
-    """Return ``{"title", "channel", "duration", "url"}`` for the given URL.
+def fetch_full_metadata(url: str, yt_dlp_bin: str = "yt-dlp") -> dict[str, Any]:
+    """Return the full yt-dlp info-dict for the given URL.
 
-    Calls ``yt-dlp --dump-json --skip-download <url>``. Raises MetadataError if yt-dlp
-    is not on PATH or returns non-zero.
+    Calls the same ``yt-dlp --dump-json --skip-download <url>`` as the slim
+    :func:`fetch_video_metadata`, but returns the raw dict untrimmed (description,
+    chapters, heatmap, counts, tags, subtitle languages, …). Raises MetadataError
+    if yt-dlp is not on PATH, returns non-zero, or emits non-JSON.
+
+    Consumer: ``yt-meta``. The slim :func:`fetch_video_metadata` stays untouched
+    for ``transcript.py`` — this is an additive sibling, not a replacement.
     """
     if not shutil.which(yt_dlp_bin):
         raise MetadataError(f"yt-dlp not found on PATH (looked for {yt_dlp_bin!r})")
@@ -33,9 +38,18 @@ def fetch_video_metadata(url: str, yt_dlp_bin: str = "yt-dlp") -> dict[str, Any]
     if proc.returncode != 0:
         raise MetadataError(f"yt-dlp --dump-json failed: {proc.stderr.strip()}")
     try:
-        info = json.loads(proc.stdout)
+        return json.loads(proc.stdout)
     except json.JSONDecodeError as e:
         raise MetadataError(f"yt-dlp returned non-JSON output: {e}") from e
+
+
+def fetch_video_metadata(url: str, yt_dlp_bin: str = "yt-dlp") -> dict[str, Any]:
+    """Return ``{"title", "channel", "duration", "url"}`` for the given URL.
+
+    Calls ``yt-dlp --dump-json --skip-download <url>``. Raises MetadataError if yt-dlp
+    is not on PATH or returns non-zero.
+    """
+    info = fetch_full_metadata(url, yt_dlp_bin=yt_dlp_bin)
     return {
         "title": info.get("title", "Untitled"),
         "channel": info.get("channel") or info.get("uploader") or "",
