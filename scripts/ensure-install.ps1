@@ -42,19 +42,50 @@ if (-not $declaredVersion) {
     exit 0
 }
 
-# 1. Probe pipx ────────────────────────────────────────────────────────────
+# 1. Resolve interpreter + pipx runner ─────────────────────────────────────
+# $probePython is the candidate interpreter — used for the pipx module fallback
+# below and the health check / --python forwarding in step 2. YT_TOOLS_PYTHON
+# overrides it.
+$probePython = $env:YT_TOOLS_PYTHON
+if (-not $probePython) {
+    $probePython = (Get-Command python -ErrorAction SilentlyContinue).Source
+}
+
+# Resolve how to invoke pipx. Prefer a pipx on PATH; otherwise fall back to
+# `<python> -m pipx` for the common "pip install --user pipx done, but
+# ensurepath not run / shell not restarted yet" case. Zero invasiveness — no
+# PATH mutation, no auto-bootstrap of pipx itself.
+$script:PipxPython = $null
 if (-not (Get-Command pipx -ErrorAction SilentlyContinue)) {
-    Write-PluginLog 'pipx not found on PATH. Install it first:'
-    Write-PluginLog '  python -m pip install --user pipx'
-    Write-PluginLog '  python -m pipx ensurepath   # restart shell after'
-    Write-PluginLog 'Then this hook will install yt-tools on the next session start.'
-    exit 0
+    if ($probePython) {
+        & $probePython -m pipx --version 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $script:PipxPython = $probePython
+            Write-PluginLog "pipx not on PATH; using '$probePython -m pipx' (module fallback)."
+        }
+    }
+    if (-not $script:PipxPython) {
+        Write-PluginLog 'pipx not found on PATH (and not importable as a module). Install it first:'
+        Write-PluginLog '  python -m pip install --user pipx'
+        Write-PluginLog '  python -m pipx ensurepath   # restart shell after'
+        Write-PluginLog 'Then this hook will install yt-tools on the next session start.'
+        exit 0
+    }
+}
+
+# Route every pipx call through this so the module fallback is transparent.
+function Invoke-Pipx {
+    if ($script:PipxPython) {
+        & $script:PipxPython -m pipx @args
+    } else {
+        & pipx @args
+    }
 }
 
 # 2. Probe yt-tools — install or update from plugin clone ──────────────────
 $installedVersion = $null
 try {
-    $pipxOut = pipx list --short 2>$null
+    $pipxOut = Invoke-Pipx list --short 2>$null
     if ($pipxOut) {
         $line = $pipxOut | Where-Object { $_ -match '^yt-tools\s+' } | Select-Object -First 1
         if ($line) {
@@ -81,12 +112,8 @@ if ($needsInstall) {
     # Python health probe — bail if the candidate interpreter's stdlib is
     # broken (e.g. uv-toolchain drift leaves SRE magic mismatch and re.compile
     # crashes). Without this we silently replace a working venv with a broken
-    # one. YT_TOOLS_PYTHON env-var overrides the probe target and is also
-    # forwarded to pipx via --python.
-    $probePython = $env:YT_TOOLS_PYTHON
-    if (-not $probePython) {
-        $probePython = (Get-Command python -ErrorAction SilentlyContinue).Source
-    }
+    # one. $probePython was resolved in step 1 (YT_TOOLS_PYTHON overrides);
+    # it is also forwarded to pipx via --python.
     if ($probePython) {
         & $probePython -c "import re; re.compile('x')" 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) {
@@ -104,7 +131,7 @@ if ($needsInstall) {
     # favour of explicit uninstall + clean install. Idempotent (silent if
     # nothing is installed).
     if ($installedVersion) {
-        pipx uninstall yt-tools 2>&1 | ForEach-Object { Write-PluginLog $_ }
+        Invoke-Pipx uninstall yt-tools 2>&1 | ForEach-Object { Write-PluginLog $_ }
         if ($LASTEXITCODE -ne 0) {
             Write-PluginLog 'WARN: pipx uninstall yt-tools failed; will attempt install anyway.'
         }
@@ -119,10 +146,10 @@ if ($needsInstall) {
         $pipxArgs += @('--python', $env:YT_TOOLS_PYTHON)
     }
     $fullTarget = "$PluginRoot[full]"
-    pipx @pipxArgs $fullTarget 2>&1 | ForEach-Object { Write-PluginLog $_ }
+    Invoke-Pipx @pipxArgs $fullTarget 2>&1 | ForEach-Object { Write-PluginLog $_ }
     if ($LASTEXITCODE -ne 0) {
         Write-PluginLog 'WARN: install with [full] extras failed (likely bpm-detector VCS fetch blocked); falling back to core install.'
-        pipx @pipxArgs $PluginRoot 2>&1 | ForEach-Object { Write-PluginLog $_ }
+        Invoke-Pipx @pipxArgs $PluginRoot 2>&1 | ForEach-Object { Write-PluginLog $_ }
         if ($LASTEXITCODE -ne 0) {
             Write-PluginLog 'WARN: core install also failed. Investigate pipx state.'
         }

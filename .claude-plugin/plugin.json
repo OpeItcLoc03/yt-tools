@@ -1,7 +1,7 @@
 {
   "name": "yt-tools",
   "displayName": "yt-tools",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Iterative YouTube watching for agents: clean-markdown transcripts with [mm:ss] anchors, targeted frame extraction, and FFT audio analysis (BPM, key, chord progression, spectral features). Bundles the using-yt-tools skill and a SessionStart hook that auto-installs from the plugin's local clone via pipx (default [full] extras, fallback to core) and probes ffmpeg.",
   "author": {
     "name": "Victor Kuznetsov",

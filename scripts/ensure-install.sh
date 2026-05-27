@@ -34,9 +34,26 @@ if [ -z "$declared_version" ]; then
     exit 0
 fi
 
-# 1. Probe pipx ────────────────────────────────────────────────────────────
-if ! command -v pipx >/dev/null 2>&1; then
-    log "pipx not found on PATH. Install it first:"
+# 1. Resolve interpreter + pipx runner ─────────────────────────────────────
+# probe_python is the candidate interpreter — used both for the pipx module
+# fallback below and the health check / --python forwarding in step 2.
+# YT_TOOLS_PYTHON overrides it.
+probe_python="${YT_TOOLS_PYTHON:-}"
+if [ -z "$probe_python" ]; then
+    probe_python="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)"
+fi
+
+# Resolve how to invoke pipx. Prefer a pipx on PATH; otherwise fall back to
+# `<python> -m pipx` for the common "pip install --user pipx done, but
+# ensurepath not run / shell not restarted yet" case. Zero invasiveness — no
+# PATH mutation, no auto-bootstrap of pipx itself.
+if command -v pipx >/dev/null 2>&1; then
+    pipx_run() { pipx "$@"; }
+elif [ -n "$probe_python" ] && "$probe_python" -m pipx --version >/dev/null 2>&1; then
+    log "pipx not on PATH; using '$probe_python -m pipx' (module fallback)."
+    pipx_run() { "$probe_python" -m pipx "$@"; }
+else
+    log "pipx not found on PATH (and not importable as a module). Install it first:"
     log "  python -m pip install --user pipx"
     log "  python -m pipx ensurepath   # restart shell after"
     log "Then this hook will install yt-tools on the next session start."
@@ -45,8 +62,8 @@ fi
 
 # 2. Probe yt-tools — install or update from plugin clone ──────────────────
 installed_version=""
-if pipx list --short 2>/dev/null | grep -q '^yt-tools '; then
-    installed_version=$(pipx list --short 2>/dev/null | awk '/^yt-tools / {print $2}')
+if pipx_run list --short 2>/dev/null | grep -q '^yt-tools '; then
+    installed_version=$(pipx_run list --short 2>/dev/null | awk '/^yt-tools / {print $2}')
 fi
 
 needs_install=true
@@ -65,12 +82,8 @@ if [ "$needs_install" = "true" ]; then
     # Python health probe — bail if the candidate interpreter's stdlib is
     # broken (e.g. uv-toolchain drift leaves SRE magic mismatch and re.compile
     # crashes). Without this we silently replace a working venv with a broken
-    # one. YT_TOOLS_PYTHON env-var overrides the probe target and is also
-    # forwarded to pipx via --python.
-    probe_python="${YT_TOOLS_PYTHON:-}"
-    if [ -z "$probe_python" ]; then
-        probe_python="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)"
-    fi
+    # one. probe_python was resolved in step 1 (YT_TOOLS_PYTHON overrides);
+    # it is also forwarded to pipx via --python.
     if [ -n "$probe_python" ]; then
         if ! "$probe_python" -c "import re; re.compile('x')" >/dev/null 2>&1; then
             log "WARN: $probe_python failed health check (import re / re.compile crashed)."
@@ -87,7 +100,7 @@ if [ "$needs_install" = "true" ]; then
     # favour of explicit uninstall + clean install. Idempotent (silent if
     # nothing is installed).
     if [ -n "$installed_version" ]; then
-        pipx uninstall yt-tools >&2 2>/dev/null || \
+        pipx_run uninstall yt-tools >&2 2>/dev/null || \
             log "WARN: pipx uninstall yt-tools failed; will attempt install anyway."
     fi
 
@@ -99,9 +112,9 @@ if [ "$needs_install" = "true" ]; then
     if [ -n "${YT_TOOLS_PYTHON:-}" ]; then
         pipx_args+=(--python "$YT_TOOLS_PYTHON")
     fi
-    if ! pipx "${pipx_args[@]}" "${PLUGIN_ROOT}[full]" >&2; then
+    if ! pipx_run "${pipx_args[@]}" "${PLUGIN_ROOT}[full]" >&2; then
         log "WARN: install with [full] extras failed (likely bpm-detector VCS fetch blocked); falling back to core install."
-        if ! pipx "${pipx_args[@]}" "$PLUGIN_ROOT" >&2; then
+        if ! pipx_run "${pipx_args[@]}" "$PLUGIN_ROOT" >&2; then
             log "WARN: core install also failed. Investigate pipx state."
         fi
     fi
