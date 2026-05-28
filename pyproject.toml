@@ -50,6 +50,10 @@ dependencies = [
 full = [
     "bpm-detector @ git+https://github.com/libraz/bpm-detector@v1.1.0",
 ]
+ocr = [
+    "rapidocr>=3.8",
+    "onnxruntime>=1.18",
+]
 test = ["pytest>=7.0"]
 
 [project.urls]
@@ -62,6 +66,7 @@ yt-transcript = "yt_tools.transcript:main"
 yt-meta = "yt_tools.meta:main"
 yt-comments = "yt_tools.comments:main"
 yt-search = "yt_tools.search:main"
+yt-ocr = "yt_tools.ocr:main"
 yt-frames = "yt_tools.frames:main"
 yt-watch = "yt_tools.watch:main"
 yt-listen = "yt_tools.listen:main"
