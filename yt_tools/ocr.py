@@ -84,14 +84,23 @@ def discover_frames(frames_dir: Path) -> list[tuple[int, Path]]:
 # --- engine factory (lazy import) -------------------------------------------
 
 
-def _build_params(language: str, langrec_enum) -> dict:
-    """Map user-facing language → RapidOCR ``Rec.lang_type`` params dict.
+def _build_params(language: str, langrec_enum, ocrversion_enum=None) -> dict:
+    """Map user-facing language → RapidOCR params dict.
 
-    ``multi`` → empty dict (use the default Chinese+English multilingual model,
-    closest analog to "multi" in PP-OCR — there's no single Latin+CJK model).
+    Forces ``PP-OCRv5`` across Det / Cls / Rec when ``ocrversion_enum`` is
+    supplied (RapidOCR 3.8.x defaults the bundled-model dance to v4 — we want
+    v5 per design spec). For ``multi``, returns params **without** a
+    ``Rec.lang_type`` override so RapidOCR picks its default multilingual
+    model (Chinese+English).
     """
+    params: dict = {}
+    if ocrversion_enum is not None:
+        v5 = ocrversion_enum.PPOCRV5
+        params["Det.ocr_version"] = v5
+        params["Cls.ocr_version"] = v5
+        params["Rec.ocr_version"] = v5
     if language == "multi":
-        return {}
+        return params
     mapping = {
         "en": getattr(langrec_enum, "EN", None),
         "ru": getattr(langrec_enum, "CYRILLIC", None),
@@ -104,7 +113,8 @@ def _build_params(language: str, langrec_enum) -> dict:
             f"unknown language: {language!r} "
             f"(supported: {', '.join(SUPPORTED_LANGUAGES)})"
         )
-    return {"Rec.lang_type": lang_type}
+    params["Rec.lang_type"] = lang_type
+    return params
 
 
 def _load_engine(language: str):
@@ -115,11 +125,11 @@ def _load_engine(language: str):
     without it.
     """
     try:
-        from rapidocr import LangRec, RapidOCR  # noqa: PLC0415
+        from rapidocr import LangRec, OCRVersion, RapidOCR  # noqa: PLC0415
     except ImportError as e:
         raise OcrError(_MISSING_EXTRA_HINT) from e
-    params = _build_params(language, LangRec)
-    return RapidOCR(params=params) if params else RapidOCR()
+    params = _build_params(language, LangRec, OCRVersion)
+    return RapidOCR(params=params)
 
 
 def _ocr_one(engine, image_path: Path) -> list[str]:

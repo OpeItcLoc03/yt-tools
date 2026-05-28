@@ -86,30 +86,51 @@ class _FakeLangRec:
     CH = "lang::ch"
 
 
+class _FakeOCRVersion:
+    PPOCRV5 = "ocrver::v5"
+
+
 def test_build_params_en_maps_to_LangRec_EN():
-    assert _build_params("en", _FakeLangRec) == {"Rec.lang_type": "lang::en"}
+    assert _build_params("en", _FakeLangRec)["Rec.lang_type"] == "lang::en"
 
 
 def test_build_params_ru_maps_to_LangRec_CYRILLIC():
-    assert _build_params("ru", _FakeLangRec) == {"Rec.lang_type": "lang::cyrillic"}
+    assert _build_params("ru", _FakeLangRec)["Rec.lang_type"] == "lang::cyrillic"
 
 
 def test_build_params_ja_maps_to_LangRec_JAPAN():
-    assert _build_params("ja", _FakeLangRec) == {"Rec.lang_type": "lang::japan"}
+    assert _build_params("ja", _FakeLangRec)["Rec.lang_type"] == "lang::japan"
 
 
 def test_build_params_zh_maps_to_LangRec_CH():
-    assert _build_params("zh", _FakeLangRec) == {"Rec.lang_type": "lang::ch"}
+    assert _build_params("zh", _FakeLangRec)["Rec.lang_type"] == "lang::ch"
 
 
-def test_build_params_multi_returns_empty_dict():
+def test_build_params_multi_returns_no_lang_type():
     # multi → use RapidOCR default (Chinese+English multilingual model)
-    assert _build_params("multi", _FakeLangRec) == {}
+    p = _build_params("multi", _FakeLangRec)
+    assert "Rec.lang_type" not in p
 
 
 def test_build_params_unknown_raises():
     with pytest.raises(OcrError):
         _build_params("xx", _FakeLangRec)
+
+
+def test_build_params_forces_pp_ocrv5_across_components():
+    """RapidOCR 3.8.x defaults to v4 unless we explicitly opt into v5 —
+    align all three components (det/cls/rec) per design spec."""
+    p = _build_params("en", _FakeLangRec, _FakeOCRVersion)
+    assert p["Det.ocr_version"] == "ocrver::v5"
+    assert p["Cls.ocr_version"] == "ocrver::v5"
+    assert p["Rec.ocr_version"] == "ocrver::v5"
+
+
+def test_build_params_multi_still_forces_v5():
+    """``multi`` skips lang_type override but must still pin v5."""
+    p = _build_params("multi", _FakeLangRec, _FakeOCRVersion)
+    assert p["Rec.ocr_version"] == "ocrver::v5"
+    assert "Rec.lang_type" not in p
 
 
 # --- ocr_to_markdown ---------------------------------------------------------
