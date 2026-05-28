@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yt-tools"
-version = "0.6.1"
-description = "CLI suite for iterative YouTube watching by LLM agents: transcript with [mm:ss] anchors, targeted frame extraction, and FFT audio analysis (BPM, key, chord progression, spectral features)."
+version = "0.7.0"
+description = "CLI suite for iterative YouTube watching by LLM agents: transcript with [mm:ss] anchors, targeted frame extraction, FFT audio analysis (BPM, key, chord progression, spectral features), and OCR over cached frames for silent-with-text videos."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 license = { text = "MIT" }
@@ -23,6 +23,8 @@ keywords = [
     "ffmpeg",
     "librosa",
     "music-information-retrieval",
+    "ocr",
+    "rapidocr",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -4,7 +4,7 @@ CLI suite for **iterative agent-driven YouTube watching**. The agent reads the
 transcript, decides which moments matter, then pulls only those frames or
 audio FFT slices — no bulk download, no JSON soup, no MCP scaffolding.
 
-Seven CLIs, one cache, stdout-friendly absolute paths so the caller never
+Eight CLIs, one cache, stdout-friendly absolute paths so the caller never
 has to guess where the artefact landed:
 
 - `yt-search` — query → markdown list of candidate videos via yt-dlp's
@@ -21,6 +21,11 @@ has to guess where the artefact landed:
   capped at the top 50 by default; raise with `--max`. Call it deliberately.
 - `yt-frames` — targeted frame extraction by timestamp, scene-detect, or
   fixed interval.
+- `yt-ocr` — OCR over cached frames (RapidOCR PP-OCRv5 via onnxruntime) →
+  `[mm:ss]` markdown blocks. The fallback for silent-with-text videos
+  where the transcript is empty and content lives in burned-in overlay
+  text (schematic labels, chord matrices, parameter walkthroughs). Needs
+  the `[ocr]` extra.
 - `yt-listen` — FFT audio analysis: per-timestamp clip + mel-spectrogram PNG +
   features `.md` with BPM, key, chord progression, and spectral statistics.
 - `yt-watch` — combined transcript + scene-frames in one `.md` with
@@ -43,10 +48,12 @@ use in any environment). PyPI distribution is deferred to a future release.
 The plugin's `SessionStart` hook runs
 `pipx install --force "$CLAUDE_PLUGIN_ROOT"` on the first session after
 install, exposing `yt-search`, `yt-transcript`, `yt-meta`, `yt-comments`,
-`yt-frames`, `yt-listen`, `yt-watch`, `yt-tools` (and a shimmed `yt-dlp`)
-in `~/.local/bin/`. The bundled `using-yt-tools` skill orchestrates the
-flows (discovery search / iterative watch / targeted frames / audio
-analysis / metadata / comments) for the agent.
+`yt-frames`, `yt-ocr`, `yt-listen`, `yt-watch`, `yt-tools` (and a shimmed
+`yt-dlp`) in `~/.local/bin/`. The bundled `using-yt-tools` skill
+orchestrates the flows (discovery search / iterative watch / targeted
+frames / audio analysis / metadata / comments / OCR) for the agent. The
+hook installs the `[full]` extra by default; the `[ocr]` extra (RapidOCR
++ onnxruntime) is opt-in — see the OCR section below.
 
 The plugin marketplace catalog lives at
 [`OpeItcLoc03/claude-plugins`](https://github.com/OpeItcLoc03/claude-plugins);
@@ -198,6 +205,52 @@ yt-frames URL --mode scene --scene-threshold 27
 yt-watch URL
 ```
 
+### Flow F — OCR (silent-with-text videos)
+
+When `yt-transcript` returns 0 bytes (or near-nothing) and the content
+lives entirely in burned-in overlay text — tutorial channels with
+schematic labels, chord matrices over dimmed B-roll, parameter
+walkthroughs without voice-over — fall back to OCR over cached frames.
+Engine is [RapidOCR](https://github.com/RapidAI/RapidOCR) (PP-OCRv5
+models via `onnxruntime`).
+
+```bash
+# 1) extract frames first (lower scene threshold catches overlay fades
+#    within the same shot; or use --mode interval for a denser sample)
+yt-frames URL --mode scene --scene-threshold 12
+# or:
+yt-frames URL --mode interval --interval 15s
+
+# 2) OCR every cached frame → markdown with [mm:ss] anchors
+yt-ocr URL
+# → ./yt-cache/<vid>/ocr.md
+
+# Or skip step 1 — let yt-ocr extract on its own:
+yt-ocr URL --timestamps 1:30,2:45,5:10
+
+# Non-English overlays:
+yt-ocr URL --language ru        # Cyrillic
+yt-ocr URL --language ja        # Japanese
+yt-ocr URL --language zh        # Chinese (simplified)
+yt-ocr URL --language multi     # PP-OCR multilingual (Chinese+English)
+```
+
+The result file mirrors `transcript.md`: per-`[mm:ss]` block, one line
+per detected text region, an explicit `_(no text detected)_` marker for
+frames where the engine returned nothing (so an agent can tell the frame
+was checked vs. silently omitted).
+
+> **Install the `[ocr]` extra.** RapidOCR and `onnxruntime` are **not**
+> in the core install. If `yt-ocr` exits with the missing-extra hint,
+> run:
+> ```bash
+> pipx inject yt-tools rapidocr onnxruntime
+> # or for non-pipx setups:
+> pip install 'yt-tools[ocr]'
+> ```
+> First run with a given `--language` lazy-downloads a ~10 MB PP-OCRv5
+> ONNX model into `~/.cache/rapidocr/`.
+
 ### Cache hygiene
 
 ```bash
@@ -220,6 +273,7 @@ working directory; the one exception is `yt-search`, which writes to
     transcript.md          # yt-transcript output
     meta.md                # yt-meta output
     comments.md            # yt-comments output
+    ocr.md                 # yt-ocr output (re-reads frames/ — same dir as yt-frames)
     watch.md               # yt-watch output
     frames/
       frame_<mmss>.jpg     # yt-frames / yt-watch (zero-padded mmss)
