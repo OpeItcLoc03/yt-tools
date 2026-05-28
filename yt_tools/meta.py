@@ -17,25 +17,16 @@ import sys
 from pathlib import Path
 
 from yt_tools._metadata import MetadataError, fetch_full_metadata
-from yt_tools.core import cache_dir_for, format_seconds_to_mmss, force_utf8_streams
+from yt_tools.core import (
+    cache_dir_for,
+    force_utf8_streams,
+    format_count,
+    format_seconds_to_mmss,
+    format_upload_date_iso,
+)
 
 # How many heatmap segments to surface in the "Most replayed" section.
 _MOST_REPLAYED_LIMIT = 5
-
-
-def _fmt_count(value) -> str | None:
-    """Comma-group an integer count. Returns None for missing or non-numeric input."""
-    try:
-        return f"{int(value):,}"
-    except (TypeError, ValueError):
-        return None
-
-
-def _format_upload_date(raw: str | None) -> str | None:
-    """``"20240115"`` → ``"2024-01-15"``. Returns None for missing/malformed input."""
-    if not raw or len(raw) != 8 or not raw.isdigit():
-        return None
-    return f"{raw[0:4]}-{raw[4:6]}-{raw[6:8]}"
 
 
 def _chapters_section(chapters: list[dict]) -> list[str]:
@@ -114,10 +105,10 @@ def metadata_to_markdown(info: dict) -> str:
         ("Comments", "comment_count"),
         ("Subscribers", "channel_follower_count"),
     ):
-        formatted = _fmt_count(info.get(key))
+        formatted = format_count(info.get(key))
         if formatted is not None:
             stat_rows.append(f"- {label}: {formatted}")
-    upload = _format_upload_date(info.get("upload_date"))
+    upload = format_upload_date_iso(info.get("upload_date"))
     if upload:
         stat_rows.append(f"- Uploaded: {upload}")
     if stat_rows:

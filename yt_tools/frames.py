@@ -93,6 +93,8 @@ def _ensure_source_mp4(url: str, dest: Path, yt_dlp_bin: str = "yt-dlp") -> Path
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if proc.returncode != 0 or not dest.exists():
@@ -116,6 +118,8 @@ def _ffmpeg_extract_from_file(source: Path, seconds: float, out_path: Path, ffmp
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if proc.returncode != 0 or not out_path.exists():
@@ -136,6 +140,8 @@ def _ffmpeg_extract_streaming(
         [yt_dlp_bin, "-f", SOURCE_FORMAT_SPEC, "-g", url],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if g.returncode != 0:
@@ -156,6 +162,8 @@ def _ffmpeg_extract_streaming(
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if proc.returncode != 0 or not out_path.exists():

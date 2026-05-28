@@ -62,7 +62,15 @@ def fetch_comments(
         raise MetadataError(f"yt-dlp not found on PATH (looked for {yt_dlp_bin!r})")
     cmd = build_yt_dlp_cmd(url, max_comments=max_comments, sort=sort, yt_dlp_bin=yt_dlp_bin)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=False)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600,
+            check=False,
+        )
     except subprocess.TimeoutExpired as e:
         raise MetadataError(f"yt-dlp comment scrape timed out for {url}") from e
     if proc.returncode != 0:

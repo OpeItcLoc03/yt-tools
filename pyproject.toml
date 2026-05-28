@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yt-tools"
-version = "0.6.0"
+version = "0.6.1"
 description = "CLI suite for iterative YouTube watching by LLM agents: transcript with [mm:ss] anchors, targeted frame extraction, and FFT audio analysis (BPM, key, chord progression, spectral features)."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"

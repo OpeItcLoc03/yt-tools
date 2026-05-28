@@ -31,7 +31,9 @@ from pathlib import Path
 from yt_tools._metadata import MetadataError
 from yt_tools.core import (
     force_utf8_streams,
+    format_count,
     format_seconds_to_mmss,
+    format_upload_date_iso,
     parse_timestamp_to_seconds,
 )
 
@@ -57,7 +59,7 @@ def slugify(query: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", lowered).strip("-")
     if not slug:
         return _SLUG_FALLBACK
-    return slug[:_SLUG_MAX].rstrip("-") or _SLUG_FALLBACK
+    return slug[:_SLUG_MAX]
 
 
 def build_yt_dlp_cmd(
@@ -94,7 +96,15 @@ def run_search(
         raise MetadataError(f"yt-dlp not found on PATH (looked for {yt_dlp_bin!r})")
     cmd = build_yt_dlp_cmd(query, max_results=max_results, yt_dlp_bin=yt_dlp_bin)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
     except subprocess.TimeoutExpired as e:
         raise MetadataError(f"yt-dlp search timed out for query {query!r}") from e
     if proc.returncode != 0:
@@ -115,19 +125,6 @@ def run_search(
 # --- pure render -------------------------------------------------------------
 
 
-def _fmt_count(value) -> str | None:
-    try:
-        return f"{int(value):,}"
-    except (TypeError, ValueError):
-        return None
-
-
-def _fmt_upload_date(raw) -> str | None:
-    if not raw or not isinstance(raw, str) or len(raw) != 8 or not raw.isdigit():
-        return None
-    return f"{raw[0:4]}-{raw[4:6]}-{raw[6:8]}"
-
-
 def _result_block(idx: int, r: dict) -> list[str]:
     """One numbered result block. Url is the LAST field (bulk-grep contract)."""
     title = (r.get("title") or "(untitled)").strip()
@@ -146,11 +143,14 @@ def _result_block(idx: int, r: dict) -> list[str]:
     else:
         lines.append("- **duration:** —")
 
-    views = _fmt_count(r.get("view_count"))
+    views = format_count(r.get("view_count"))
     if views is not None:
         lines.append(f"- **views:** {views}")
 
-    upload = _fmt_upload_date(r.get("upload_date"))
+    # `--flat-playlist` on ytsearch never returns upload_date in practice
+    # (YouTube only surfaces relative dates on the search page). Kept defensive
+    # in case yt-dlp / YouTube ever start populating it.
+    upload = format_upload_date_iso(r.get("upload_date"))
     if upload:
         lines.append(f"- **uploaded:** {upload}")
 
@@ -212,6 +212,20 @@ def _apply_duration_filters(
 # --- CLI ---------------------------------------------------------------------
 
 
+def _parse_duration_arg(value: str | None, flag_name: str) -> int | None:
+    """Parse ``--min-duration`` / ``--max-duration``. Requires ``:`` — a bare
+    integer would be ambiguous (30 = 30 seconds, not 30 minutes), so we reject
+    it rather than silently disagree with the help text."""
+    if value is None:
+        return None
+    if ":" not in value:
+        raise ValueError(
+            f"{flag_name} must be MM:SS or H:MM:SS (got {value!r}); "
+            f"write {value}:00 for {value} minutes, or 0:{value} for {value} seconds"
+        )
+    return parse_timestamp_to_seconds(value)
+
+
 def run(
     query: str,
     max_results: int = DEFAULT_MAX_RESULTS,
@@ -223,8 +237,8 @@ def run(
 
     Returns the absolute path of the artefact (yt-tools stdout convention).
     """
-    min_seconds = parse_timestamp_to_seconds(min_duration) if min_duration else None
-    max_seconds = parse_timestamp_to_seconds(max_duration) if max_duration else None
+    min_seconds = _parse_duration_arg(min_duration, "--min-duration")
+    max_seconds = _parse_duration_arg(max_duration, "--max-duration")
 
     results = run_search(query, max_results=max_results)
     filtered = _apply_duration_filters(results, min_seconds, max_seconds)
@@ -232,7 +246,9 @@ def run(
 
     if out is None:
         slug = slugify(query)
-        ts = int(time.time())
+        # Nanosecond resolution — int(time.time()) collides within a same-second
+        # re-run of the same query and breaks the "never overwrites" contract.
+        ts = time.time_ns()
         out = Path.cwd() / "yt-cache" / SEARCH_DIR_NAME / f"{slug}-{ts}.md"
 
     out.parent.mkdir(parents=True, exist_ok=True)

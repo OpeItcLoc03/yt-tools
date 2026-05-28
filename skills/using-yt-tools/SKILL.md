@@ -1,6 +1,6 @@
 ---
 name: using-yt-tools
-version: 0.5.0
+version: 0.5.2
 description: Six flows for YouTube content. **Discovery-search** (`yt-search`) — query → markdown list of candidate videos via yt-dlp's native ytsearch extractor; the entry point when the user hasn't named a URL yet. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. **Metadata** (`yt-meta`, free — rides the same yt-dlp call) — description, chapters, most-replayed heatmap, view/like/comment counts, tags, subtitle languages as markdown. **Comments** (`yt-comments`, separate paginated scrape) — top comments + nested replies; capped top-50 by default, costly on viral videos, only on explicit request. Triggers (mixed RU/EN — same skill serves both audiences) — "find a video about X", "search youtube for X", "find tutorial about X", "найди видео про X", "поищи туториал", "обзор на X youtube", "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", "video description", "show chapters", "most replayed", "video stats", "что в описании", "покажи главы", "самые пересматриваемые", "top comments", "what are people saying", "комменты под роликом", "топ комментариев", or any youtube.com URL. CLI installed via the bundled SessionStart hook which runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` from the plugin's local clone (PyPI release deferred post-v1). YouTube-only — for Vimeo / Twitch / local files use other tools.
 ---
 
@@ -241,15 +241,19 @@ ffmpeg**, no `source.mp4` download.
 
 ```
 0. Resolve yt-search per Prerequisites → Locating binaries; build PATH-prepend ($YTBIN only — no ffmpeg) if resolved via fallback
-1. yt-search "<query>" [--max N] [--min-duration M:SS]  → ./yt-cache/_search/<slug>-<unix>.md
+1. yt-search "<query>" [--max N] [--min-duration M:SS]  → ./yt-cache/_search/<slug>-<unix-ns>.md
 2. Read the result file
 3. Pick a URL (it's the last field of each block — `grep -oP 'https://[^\s]+'` works too if you want the raw list)
 4. Continue: Flow A (transcript / summary) or Flow B (specific frames) or Flow D (metadata) on the chosen URL
 ```
 
 Single stdout line: the bare absolute path of the search artefact. The
-file's filename includes a unix timestamp (`<slug>-<unix>.md`), so
-re-running the same query never overwrites a previous result. The
+filename embeds a nanosecond-resolution unix timestamp
+(`<slug>-<unix-ns>.md`), so re-running the same query never overwrites a
+previous result — even sub-second re-runs land in distinct files.
+`--min-duration` / `--max-duration` require an explicit `MM:SS` (or
+`H:MM:SS`) — a bare integer is rejected to avoid the seconds-vs-minutes
+ambiguity. The
 underlying `yt-dlp ytsearch` ranking is YouTube-defined and **not stable**
 between calls — re-running may reshuffle the top result; treat the file
 as a snapshot, not a cache.
@@ -392,9 +396,11 @@ Cache hygiene: `yt-tools cache list` shows usage, `yt-tools cache prune
   Don't "verify" by running yt-search first; the URL is the user's
   decision, not a hypothesis to confirm.
 - **Don't infer answers about the videos directly from the Flow 0
-  result file.** It only carries title / channel / duration / views /
-  upload-date — no description, no transcript. To answer "what's the
-  video about?" pick a URL and continue into Flow A or D. Reasoning
+  result file.** It only carries title / channel / duration / views —
+  no description, no transcript, no absolute upload date (YouTube only
+  exposes relative dates in search results; the `uploaded:` line is
+  almost always omitted). To answer "what's the video about?" or "when
+  was it uploaded?" pick a URL and continue into Flow A or D. Reasoning
   off the title alone is a hallucination risk.
 - **Don't run Flow A when the user has already named timestamps.** "Look
   at 1:23 and 4:56" → go straight to Flow B. Fetching the transcript

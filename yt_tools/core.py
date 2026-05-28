@@ -106,6 +106,21 @@ def cache_dir_for(url_or_id: str, base: Path | None = None) -> Path:
     return root
 
 
+def format_count(value) -> str | None:
+    """Comma-group an integer count. Returns None for missing or non-numeric input."""
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return None
+
+
+def format_upload_date_iso(raw) -> str | None:
+    """``"20240115"`` → ``"2024-01-15"``. Returns None for missing/malformed input."""
+    if not raw or not isinstance(raw, str) or len(raw) != 8 or not raw.isdigit():
+        return None
+    return f"{raw[0:4]}-{raw[4:6]}-{raw[6:8]}"
+
+
 def interval_timestamps(duration_seconds: float, interval: float) -> list[float]:
     """Generate ``[0, interval, 2*interval, ...]`` up to (but not including) ``duration_seconds``.
 

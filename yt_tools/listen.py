@@ -122,6 +122,8 @@ def _ffmpeg_extract_wav(
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if proc.returncode != 0 or not out_path.exists():
@@ -145,6 +147,8 @@ def _ffmpeg_extract_wav_streaming(
         [yt_dlp_bin, "-f", "bestaudio/best", "-g", url],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if g.returncode != 0:
@@ -167,6 +171,8 @@ def _ffmpeg_extract_wav_streaming(
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if proc.returncode != 0 or not out_path.exists():

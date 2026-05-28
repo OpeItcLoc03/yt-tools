@@ -30,6 +30,8 @@ def fetch_full_metadata(url: str, yt_dlp_bin: str = "yt-dlp") -> dict[str, Any]:
             [yt_dlp_bin, "--dump-json", "--skip-download", "--no-warnings", url],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
             check=False,
         )

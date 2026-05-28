@@ -117,7 +117,7 @@ then targeted heavy fetches only at the timestamps that mattered.
 ```bash
 # Find candidate videos when you don't have a URL yet.
 yt-search "MakeNoise Maths tutorial"
-# → ./yt-cache/_search/makenoise-maths-tutorial-1748443391.md
+# → ./yt-cache/_search/makenoise-maths-tutorial-1748443391123456789.md
 
 yt-search "drum tutorial" --max 5                    # cap result count
 yt-search "long-form review" --min-duration 20:00    # skip shorts
@@ -125,14 +125,18 @@ yt-search "explainer" --max-duration 10:00           # skip long-form
 ```
 
 The result file is per-result blocks — title, channel, duration, views,
-upload-date, URL (last field per block, so `grep -oP
-'https://[^\s]+'` peels the raw URL list). Pick one and continue into
-Flow 1 (`yt-transcript`), Flow 2 (`yt-meta`), or any of the others.
+URL (last field per block, so `grep -oP 'https://[^\s]+'` peels the raw
+URL list). Pick one and continue into Flow 1 (`yt-transcript`), Flow 2
+(`yt-meta`), or any of the others. Absolute upload date is **not** in
+the result file (YouTube only exposes relative dates — "2 weeks ago" —
+on the search results page, and `--flat-playlist` skips the per-video
+round-trip); fetch `yt-meta` on the chosen URL if you need it.
 
-> Files land in `yt-cache/_search/<slug>-<unix>.md` (outside any
-> `<video-id>/`) — re-running the same query never overwrites the
-> previous run. YouTube's search ranking is not stable between calls;
-> treat the file as a snapshot, not a cache.
+> Files land in `yt-cache/_search/<slug>-<unix-ns>.md` (outside any
+> `<video-id>/`) — the nanosecond timestamp guarantees re-running the
+> same query never overwrites the previous run, even in the same second.
+> YouTube's search ranking is not stable between calls; treat the file
+> as a snapshot, not a cache.
 
 ### Flow 1 — transcript-driven frames
 
