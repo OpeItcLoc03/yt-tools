@@ -4,9 +4,13 @@ CLI suite for **iterative agent-driven YouTube watching**. The agent reads the
 transcript, decides which moments matter, then pulls only those frames or
 audio FFT slices — no bulk download, no JSON soup, no MCP scaffolding.
 
-Six CLIs, one cache, stdout-friendly absolute paths so the caller never has
-to guess where the artefact landed:
+Seven CLIs, one cache, stdout-friendly absolute paths so the caller never
+has to guess where the artefact landed:
 
+- `yt-search` — query → markdown list of candidate videos via yt-dlp's
+  native `ytsearch` extractor. The entry-point when the user hasn't named
+  a URL yet; pick one and continue into the other CLIs. Zero config, no
+  API key.
 - `yt-transcript` — clean markdown transcript with metadata header and
   `[mm:ss]` paragraph anchors copy-paste-friendly for `--timestamps`.
 - `yt-meta` — full metadata as markdown: description, chapters (`[mm:ss]`
@@ -38,11 +42,11 @@ use in any environment). PyPI distribution is deferred to a future release.
 
 The plugin's `SessionStart` hook runs
 `pipx install --force "$CLAUDE_PLUGIN_ROOT"` on the first session after
-install, exposing `yt-transcript`, `yt-meta`, `yt-comments`, `yt-frames`,
-`yt-listen`, `yt-watch`, `yt-tools` (and a shimmed `yt-dlp`) in
-`~/.local/bin/`. The bundled
-`using-yt-tools` skill orchestrates the three primary flows (iterative
-watch / targeted frames / audio analysis) for the agent.
+install, exposing `yt-search`, `yt-transcript`, `yt-meta`, `yt-comments`,
+`yt-frames`, `yt-listen`, `yt-watch`, `yt-tools` (and a shimmed `yt-dlp`)
+in `~/.local/bin/`. The bundled `using-yt-tools` skill orchestrates the
+flows (discovery search / iterative watch / targeted frames / audio
+analysis / metadata / comments) for the agent.
 
 The plugin marketplace catalog lives at
 [`OpeItcLoc03/claude-plugins`](https://github.com/OpeItcLoc03/claude-plugins);
@@ -107,6 +111,28 @@ rather than replacing it with a broken one.
 
 The CLIs are designed for an **iterative** loop: cheap transcript first,
 then targeted heavy fetches only at the timestamps that mattered.
+
+### Flow 0 — discovery
+
+```bash
+# Find candidate videos when you don't have a URL yet.
+yt-search "MakeNoise Maths tutorial"
+# → ./yt-cache/_search/makenoise-maths-tutorial-1748443391.md
+
+yt-search "drum tutorial" --max 5                    # cap result count
+yt-search "long-form review" --min-duration 20:00    # skip shorts
+yt-search "explainer" --max-duration 10:00           # skip long-form
+```
+
+The result file is per-result blocks — title, channel, duration, views,
+upload-date, URL (last field per block, so `grep -oP
+'https://[^\s]+'` peels the raw URL list). Pick one and continue into
+Flow 1 (`yt-transcript`), Flow 2 (`yt-meta`), or any of the others.
+
+> Files land in `yt-cache/_search/<slug>-<unix>.md` (outside any
+> `<video-id>/`) — re-running the same query never overwrites the
+> previous run. YouTube's search ranking is not stable between calls;
+> treat the file as a snapshot, not a cache.
 
 ### Flow 1 — transcript-driven frames
 
@@ -178,21 +204,25 @@ yt-tools cache prune --older-than 7d     # drop sources older than a week
 ## Output layout
 
 Per video, all artefacts land under `./yt-cache/<video-id>/` in the current
-working directory:
+working directory; the one exception is `yt-search`, which writes to
+`./yt-cache/_search/` because its output isn't tied to a single video:
 
 ```
-./yt-cache/<video-id>/
-  source.mp4               # cached source (≤720p, reused by yt-frames / yt-listen / yt-watch)
-  transcript.md            # yt-transcript output
-  meta.md                  # yt-meta output
-  comments.md              # yt-comments output
-  watch.md                 # yt-watch output
-  frames/
-    frame_<mmss>.jpg       # yt-frames / yt-watch (zero-padded mmss)
-  audio/
-    clip_<mmss>.wav        # yt-listen per-timestamp clip
-    spectrum_<mmss>.png    # yt-listen mel-spectrogram
-    features_<mmss>.md     # yt-listen feature report (BPM / key / chord / MFCC / spectral stats)
+./yt-cache/
+  _search/
+    <slug>-<unix>.md       # yt-search output (one per query invocation)
+  <video-id>/
+    source.mp4             # cached source (≤720p, reused by yt-frames / yt-listen / yt-watch)
+    transcript.md          # yt-transcript output
+    meta.md                # yt-meta output
+    comments.md            # yt-comments output
+    watch.md               # yt-watch output
+    frames/
+      frame_<mmss>.jpg     # yt-frames / yt-watch (zero-padded mmss)
+    audio/
+      clip_<mmss>.wav      # yt-listen per-timestamp clip
+      spectrum_<mmss>.png  # yt-listen mel-spectrogram
+      features_<mmss>.md   # yt-listen feature report (BPM / key / chord / MFCC / spectral stats)
 ```
 
 The last line of stdout (or one line per artefact for multi-output commands
