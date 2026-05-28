@@ -1,7 +1,7 @@
 ---
 name: using-yt-tools
-version: 0.4.0
-description: Five flows for YouTube content. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. **Metadata** (`yt-meta`, free — rides the same yt-dlp call) — description, chapters, most-replayed heatmap, view/like/comment counts, tags, subtitle languages as markdown. **Comments** (`yt-comments`, separate paginated scrape) — top comments + nested replies; capped top-50 by default, costly on viral videos, only on explicit request. Triggers (mixed RU/EN — same skill serves both audiences) — "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", "video description", "show chapters", "most replayed", "video stats", "что в описании", "покажи главы", "самые пересматриваемые", "top comments", "what are people saying", "комменты под роликом", "топ комментариев", or any youtube.com URL. CLI installed via the bundled SessionStart hook which runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` from the plugin's local clone (PyPI release deferred post-v1). YouTube-only — for Vimeo / Twitch / local files use other tools.
+version: 0.5.0
+description: Six flows for YouTube content. **Discovery-search** (`yt-search`) — query → markdown list of candidate videos via yt-dlp's native ytsearch extractor; the entry point when the user hasn't named a URL yet. **Iterative-watch** (summary / exploration) — transcript with [mm:ss] anchors → pick moments → extract frames. **Targeted-frames** (specific timestamps) — extract frames directly, no transcript. **Audio-analysis** (music FFT) — per timestamp spectrogram + numeric digest (BPM, key, chord progression, harmonic content) via `yt-listen`. **Metadata** (`yt-meta`, free — rides the same yt-dlp call) — description, chapters, most-replayed heatmap, view/like/comment counts, tags, subtitle languages as markdown. **Comments** (`yt-comments`, separate paginated scrape) — top comments + nested replies; capped top-50 by default, costly on viral videos, only on explicit request. Triggers (mixed RU/EN — same skill serves both audiences) — "find a video about X", "search youtube for X", "find tutorial about X", "найди видео про X", "поищи туториал", "обзор на X youtube", "what's in this video", "video summary", "youtube transcript", "что в ролике", "о чём видео", "show frame at N", "покажи кадр на N", "listen to fragment at N", "послушай момент N", "what's the BPM", "BPM/тональность видео", "analyze audio", "спектрограмма", "video description", "show chapters", "most replayed", "video stats", "что в описании", "покажи главы", "самые пересматриваемые", "top comments", "what are people saying", "комменты под роликом", "топ комментариев", or any youtube.com URL. CLI installed via the bundled SessionStart hook which runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` from the plugin's local clone (PyPI release deferred post-v1). YouTube-only — for Vimeo / Twitch / local files use other tools.
 ---
 
 # using-yt-tools
@@ -16,7 +16,20 @@ spectrum) via `yt-listen`.
 
 ## When to use
 
-Five distinct flows, picked by user intent:
+Six distinct flows, picked by user intent:
+
+**Flow 0 — discovery-search** (find videos by query):
+
+- The user has **no URL yet** — they want to find videos about a topic
+  (tutorial, review, lecture, news segment).
+- Steps: `yt-search "<query>" --max N` → read the result file → pick a URL
+  → continue into Flow A/B/C/D as appropriate.
+- Trigger phrases: "find a video about X", "search youtube for X", "find
+  tutorial about X", "youtube videos on X", «найди видео про X», «поищи
+  туториал по X», «обзор на X youtube», «есть на youtube видео про X».
+- This is an **entry-point flow**, not a standalone answer — its output is
+  always input to another flow. If the user asks "find me a Maths tutorial
+  and tell me what's in it" → Flow 0 → Flow A on the chosen URL.
 
 **Flow A — iterative-watch** (exploration / summary):
 
@@ -79,7 +92,7 @@ Five distinct flows, picked by user intent:
   under the video", "read the comments", «комменты под роликом», «топ
   комментариев», «что пишут в комментах», «почитай комментарии».
 
-All five flows assume the `yt-tools` CLI is installed. When this skill
+All six flows assume the `yt-tools` CLI is installed. When this skill
 ships as part of the `yt-tools` Claude Code plugin, the `SessionStart`
 hook runs `pipx install --force "$CLAUDE_PLUGIN_ROOT[full]"` automatically
 on the first session after plugin install (installs from the plugin's
@@ -132,9 +145,9 @@ resolve through a fallback path, use PATH-prepend on each invocation (see
 Invoke pattern below). Abort **only** if the binary is not on PATH and
 not in any of the known install locations.
 
-**yt-tools CLI** (any single location gives all seven binaries —
-`yt-frames`, `yt-transcript`, `yt-meta`, `yt-comments`, `yt-listen`,
-`yt-watch`, `yt-tools` — plus a shimmed `yt-dlp`):
+**yt-tools CLI** (any single location gives all eight binaries —
+`yt-search`, `yt-frames`, `yt-transcript`, `yt-meta`, `yt-comments`,
+`yt-listen`, `yt-watch`, `yt-tools` — plus a shimmed `yt-dlp`):
 
 1. **PATH**: `Get-Command yt-frames` (pwsh) / `command -v yt-frames`
    (bash). For Flow C also probe `yt-listen` (present from pyproject
@@ -208,18 +221,38 @@ prepend is needed — invoke normally.
 
 | Flow | Required | Optional |
 |---|---|---|
+| 0 — discovery-search | Free-text query | `--max N` (default 10); `--min-duration MM:SS` (skip shorts); `--max-duration MM:SS`; `--out PATH` |
 | A — iterative-watch | YouTube URL or bare 11-char video id | `--lang ru,en` for non-English subs; `--out PATH` |
 | B — targeted-frames | YouTube URL + timestamps (`mm:ss`, `h:mm:ss`, or bare seconds: `123` → 2:03) | `--no-cache-source` (stream instead of caching `source.mp4`); `--out DIR` |
 | C — audio-analysis | YouTube URL + timestamps (same formats as B) | `--duration 30s` (default 30s — the lower bound for beat-tracking); `--mode interval --interval 60s` (bulk sampling); `--no-wav` / `--no-spectrogram` (both default ON); `--linear` (STFT instead of mel); `--chroma` (bonus chromagram PNG); `--sample-rate 22050`; `--no-cache-source`; `--out DIR` |
 | D — metadata | YouTube URL or bare 11-char video id | `--out PATH` |
 | E — comments | YouTube URL or bare 11-char video id | `--max N` (default 50; higher = slower); `--sort {top,new}` (default top); `--out PATH` |
 
-All five flows write to `<cwd>/yt-cache/<video-id>/` by default (Flow C
-into the `audio/` sub-directory). Flows D and E need only the `yt-meta` /
+Flows A–E write to `<cwd>/yt-cache/<video-id>/` by default (Flow C into
+the `audio/` sub-directory). **Flow 0** writes to
+`<cwd>/yt-cache/_search/` instead — its artefacts aren't tied to a single
+video. Flows 0, D, and E need only the `yt-search` / `yt-meta` /
 `yt-comments` binary plus the shimmed `yt-dlp` (same pipx venv) — **no
 ffmpeg**, no `source.mp4` download.
 
 ## Steps
+
+### Flow 0 — discovery-search
+
+```
+0. Resolve yt-search per Prerequisites → Locating binaries; build PATH-prepend ($YTBIN only — no ffmpeg) if resolved via fallback
+1. yt-search "<query>" [--max N] [--min-duration M:SS]  → ./yt-cache/_search/<slug>-<unix>.md
+2. Read the result file
+3. Pick a URL (it's the last field of each block — `grep -oP 'https://[^\s]+'` works too if you want the raw list)
+4. Continue: Flow A (transcript / summary) or Flow B (specific frames) or Flow D (metadata) on the chosen URL
+```
+
+Single stdout line: the bare absolute path of the search artefact. The
+file's filename includes a unix timestamp (`<slug>-<unix>.md`), so
+re-running the same query never overwrites a previous result. The
+underlying `yt-dlp ytsearch` ranking is YouTube-defined and **not stable**
+between calls — re-running may reshuffle the top result; treat the file
+as a snapshot, not a cache.
 
 ### Flow A — iterative-watch
 
@@ -312,6 +345,8 @@ All failures abort cleanly; never leave a half-finished state.
 | Symptom | Cause | Action |
 |---|---|---|
 | `yt-transcript` / `yt-frames` not on PATH | yt-tools is installed but the session's PATH does not include the pipx-shim directory | Run the **full** probe chain (PATH → `~/.local/bin/`). Abort and print the install hint **only** if neither location yielded anything. **Do not** reinstall yt-tools when a pipx-shim exists — it's a PATH problem, not a missing package (see What NOT to do). |
+| Flow 0 — `_No results._` body in the search file | YouTube returned zero matches for the query | Reformulate (broaden / drop modifiers / drop non-ASCII) and re-run. Do **not** flip to a different engine — Phase 1 is yt-dlp-only by design. |
+| Flow 0 — every result filtered out by `--min-duration` / `--max-duration` | The post-filter is too tight (e.g. `--min-duration 30:00` on a topic dominated by 5-minute reviews) | Relax the filter and re-run. Results without a numeric `duration` (live streams, some shorts) are dropped by `--min-duration` because we can't prove they meet it. |
 | `yt-dlp not found on PATH` (from a child process) | `yt-dlp` lives in the same pipx venv as `yt-frames`, but the PATH-prepend was not built | Re-build the PATH-prepend (Prerequisites → Invoke pattern) — point `$YTBIN` at the directory where you found `yt-frames`. |
 | `ffmpeg not found on PATH` (from a child process) | ffmpeg is installed but only in the winget cache / Homebrew prefix / etc., not on the session's PATH | Run the ffmpeg resolve per Prerequisites and PATH-prepend. Abort only if no location yielded the binary — then print the per-OS install hint. **Do not** require the user to restart the Claude Code session — the resolve handles it. |
 | `yt-dlp source download failed (exit N) \| stderr: …` | Network failure / private / age-gated / region-locked / malformed URL | Print the captured stderr verbatim; do not retry. |
@@ -321,13 +356,14 @@ All failures abort cleanly; never leave a half-finished state.
 
 ## Side effects
 
-- Writes under `<cwd>/yt-cache/<video-id>/`:
-  - `transcript.md` (Flow A)
-  - `meta.md` (Flow D)
-  - `comments.md` (Flow E)
-  - `source.mp4` (≤ 720p; produced by Flows A/B/C unless `--no-cache-source`; **not** by D/E)
-  - `frames/frame_<mmss>.jpg` per extracted frame
-  - `audio/{clip,spectrum,features}_<mmss>.{wav,png,md}` (Flow C)
+- Writes under `<cwd>/yt-cache/`:
+  - `_search/<slug>-<unix>.md` (Flow 0 — outside any `<video-id>/`)
+  - `<video-id>/transcript.md` (Flow A)
+  - `<video-id>/meta.md` (Flow D)
+  - `<video-id>/comments.md` (Flow E)
+  - `<video-id>/source.mp4` (≤ 720p; produced by Flows A/B/C unless `--no-cache-source`; **not** by 0/D/E)
+  - `<video-id>/frames/frame_<mmss>.jpg` per extracted frame
+  - `<video-id>/audio/{clip,spectrum,features}_<mmss>.{wav,png,md}` (Flow C)
 - Network: `yt-dlp` pulls metadata + optionally `source.mp4`;
   `youtube-transcript-api` pulls subs; Flow E additionally paginates the
   comment feed (the one heavy network path — minutes on viral videos).
@@ -350,6 +386,16 @@ Cache hygiene: `yt-tools cache list` shows usage, `yt-tools cache prune
   ~200 MB and creates two parallel installs). If the pipx-shim exists but
   `Get-Command yt-frames` is empty, the fix is `pipx ensurepath` +
   restart shell, not a new venv.
+- **Don't run Flow 0 when the user already gave you a URL.** A YouTube
+  URL in the request — `youtube.com/watch?v=…`, `youtu.be/…`, or a bare
+  11-char id — means Flow A/B/C/D/E on that URL, not a fresh search.
+  Don't "verify" by running yt-search first; the URL is the user's
+  decision, not a hypothesis to confirm.
+- **Don't infer answers about the videos directly from the Flow 0
+  result file.** It only carries title / channel / duration / views /
+  upload-date — no description, no transcript. To answer "what's the
+  video about?" pick a URL and continue into Flow A or D. Reasoning
+  off the title alone is a hallucination risk.
 - **Don't run Flow A when the user has already named timestamps.** "Look
   at 1:23 and 4:56" → go straight to Flow B. Fetching the transcript
   first is pure waste.
