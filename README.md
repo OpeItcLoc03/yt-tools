@@ -41,7 +41,7 @@ use in any environment). PyPI distribution is deferred to a future release.
 ### As a Claude Code plugin (recommended for agent workflows)
 
 ```text
-/plugin marketplace add OpeItcLoc03/claude-plugins
+/plugin marketplace add kzntsv-dev/claude-plugins
 /plugin install yt-tools@opeitcloc03-claude-plugins
 ```
 
@@ -56,8 +56,8 @@ hook installs the `[full]` extra by default; the `[ocr]` extra (RapidOCR
 + onnxruntime) is opt-in — see the OCR section below.
 
 The plugin marketplace catalog lives at
-[`OpeItcLoc03/claude-plugins`](https://github.com/OpeItcLoc03/claude-plugins);
-this repository at [`OpeItcLoc03/yt-tools`](https://github.com/OpeItcLoc03/yt-tools).
+[`kzntsv-dev/claude-plugins`](https://github.com/kzntsv-dev/claude-plugins);
+this repository at [`kzntsv-dev/yt-tools`](https://github.com/kzntsv-dev/yt-tools).
 
 ### Standalone CLI (any environment)
 
@@ -69,10 +69,10 @@ python -m pip install --user pipx
 python -m pipx ensurepath          # adds ~/.local/bin to PATH; restart shell after
 
 # 2. install yt-tools (core) from this repo
-pipx install git+https://github.com/OpeItcLoc03/yt-tools.git
+pipx install git+https://github.com/kzntsv-dev/yt-tools.git
 
 # 3. (optional) install the [full] extra for chord progression + structure analysis
-pipx install "git+https://github.com/OpeItcLoc03/yt-tools.git#egg=yt-tools[full]"
+pipx install "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools[full]"
 ```
 
 Core install gets you `yt-listen` with `librosa`'s `beat_track` +
@@ -329,7 +329,7 @@ heavy fetches". Scene-mode and interval-mode are secondary, opt-in via flags.
 ## Development
 
 ```bash
-git clone https://github.com/OpeItcLoc03/yt-tools.git
+git clone https://github.com/kzntsv-dev/yt-tools.git
 cd yt-tools
 pip install -e ".[full,test]"
 pytest tests/

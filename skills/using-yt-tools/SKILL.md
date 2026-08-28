@@ -147,12 +147,12 @@ Two install paths, both equivalent for skill behaviour:
 2. **Standalone (any environment).** Install directly from the Git repo
    via pipx:
    ```bash
-   pipx install git+https://github.com/OpeItcLoc03/yt-tools.git
+   pipx install git+https://github.com/kzntsv-dev/yt-tools.git
    ```
    For chord progression + structural analysis features in `yt-listen`,
    use the `[full]` extra:
    ```bash
-   pipx install "git+https://github.com/OpeItcLoc03/yt-tools.git#egg=yt-tools[full]"
+   pipx install "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools[full]"
    ```
 
 External binary that is **not** pip-installable in either case:
@@ -194,9 +194,9 @@ the optional `[ocr]` extra):
    ```
    python -m pip install --user pipx
    python -m pipx ensurepath                                       # one-time; restart shell after
-   pipx install git+https://github.com/OpeItcLoc03/yt-tools.git    # core
+   pipx install git+https://github.com/kzntsv-dev/yt-tools.git    # core
    # For chord progression / structure analysis (optional):
-   # pipx install "git+https://github.com/OpeItcLoc03/yt-tools.git#egg=yt-tools[full]"
+   # pipx install "git+https://github.com/kzntsv-dev/yt-tools.git#egg=yt-tools[full]"
    ```
    If you are inside Claude Code, prefer the plugin path instead — install
    `yt-tools@opeitcloc03-claude-plugins` and the bundled SessionStart hook

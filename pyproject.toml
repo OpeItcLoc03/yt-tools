@@ -59,9 +59,9 @@ ocr = [
 test = ["pytest>=7.0"]
 
 [project.urls]
-Homepage = "https://github.com/OpeItcLoc03/yt-tools"
-Repository = "https://github.com/OpeItcLoc03/yt-tools"
-Issues = "https://github.com/OpeItcLoc03/yt-tools/issues"
+Homepage = "https://github.com/kzntsv-dev/yt-tools"
+Repository = "https://github.com/kzntsv-dev/yt-tools"
+Issues = "https://github.com/kzntsv-dev/yt-tools/issues"
 
 [project.scripts]
 yt-transcript = "yt_tools.transcript:main"
